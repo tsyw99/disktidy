@@ -1,0 +1,11 @@
+pub mod system;
+pub mod scan;
+pub mod cleaner;
+pub mod file_analyzer;
+pub mod settings;
+pub mod app_cache;
+pub mod app_config;
+pub mod large_file_scan;
+pub mod software_residue;
+pub mod driver;
+pub mod file_classifier;
