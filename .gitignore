@@ -32,3 +32,6 @@ pnpm-debug.log*
 
 # Tauri
 src-tauri/Cargo.lock
+
+# Trae
+.trae/
