@@ -2,13 +2,12 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { open } from '@tauri-apps/plugin-dialog';
 import { FileClassificationChart, CategoryDetailPanel } from '../components/tools';
-import { fileClassifierService } from '../services';
+import { optimizedFileClassifier, type LegendValidationResult } from '../services';
 import { useSystemStore, useSystemActions } from '../stores/systemStore';
 import { useUIStore } from '../stores';
-import type { 
-  FileClassificationResult, 
+import type {
+  FileClassificationResult,
   FileTypeStats,
-  FileClassificationOptions,
   ResidueType,
   ResidueItem,
   ResidueScanResult,
@@ -94,21 +93,7 @@ const pageVariants = {
   exit: { opacity: 0, y: -20 },
 };
 
-const defaultClassificationOptions: FileClassificationOptions = {
-  max_depth: 5,
-  include_hidden: false,
-  include_system: false,
-  exclude_paths: [
-    'Windows',
-    'Program Files',
-    'Program Files (x86)',
-    'ProgramData',
-    '$Recycle.Bin',
-    'System Volume Information',
-  ],
-  max_files: 100000,
-  top_n_categories: 15,
-};
+
 
 export default function ToolsPage() {
   const [activeModule, setActiveModule] = useState<ToolModule>('fileclassify');
@@ -142,6 +127,7 @@ export default function ToolsPage() {
   const [selectedCategory, setSelectedCategory] = useState<FileTypeStats | null>(null);
   const [isClassifying, setIsClassifying] = useState(false);
   const [classifyError, setClassifyError] = useState<string | null>(null);
+  const [, setClassificationValidation] = useState<LegendValidationResult | null>(null);
   
   const { diskList } = useSystemStore();
   const systemActions = useSystemActions();
@@ -273,6 +259,7 @@ export default function ToolsPage() {
     setClassifyError(null);
     setClassificationResult(null);
     setSelectedCategory(null);
+    setClassificationValidation(null);
 
     try {
       const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
@@ -303,6 +290,9 @@ export default function ToolsPage() {
           largest_files: [],
         };
         setClassificationResult(mockResult);
+        // 验证模拟结果
+        const validation = optimizedFileClassifier.validateResult(mockResult);
+        setClassificationValidation(validation);
         return;
       }
 
@@ -311,11 +301,21 @@ export default function ToolsPage() {
         path = 'C:\\';
       }
 
-      const result = await fileClassifierService.startClassifyFiles(path, defaultClassificationOptions);
+      // 使用优化的文件分类服务 - 独立于系统磁盘扫描设置
+      const result = await optimizedFileClassifier.startClassifyFiles(path);
+      
       if (result.cancelled) {
         setClassifyError('扫描已取消');
       } else {
         setClassificationResult(result);
+        // 验证分类结果
+        const validation = optimizedFileClassifier.validateResult(result);
+        setClassificationValidation(validation);
+        
+        // 如果验证不通过，记录警告
+        if (!validation.isValid) {
+          console.warn('文件分类结果验证警告:', validation.suggestions);
+        }
       }
     } catch (err) {
       console.error('文件分类失败:', err);
@@ -327,7 +327,7 @@ export default function ToolsPage() {
 
   const handleCancelClassify = useCallback(async () => {
     try {
-      await fileClassifierService.cancelClassifyFiles();
+      await optimizedFileClassifier.cancelClassifyFiles();
     } catch (err) {
       console.error('取消扫描失败:', err);
     }

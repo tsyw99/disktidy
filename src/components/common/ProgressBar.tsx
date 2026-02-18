@@ -12,6 +12,7 @@ export interface ProgressBarProps {
     direction?: 'left' | 'right' | 'top' | 'bottom';
   };
   showShimmer?: boolean;
+  indeterminate?: boolean;
   borderRadius?: number | string;
   className?: string;
   style?: CSSProperties;
@@ -25,6 +26,7 @@ export default function ProgressBar({
   color,
   gradient,
   showShimmer = false,
+  indeterminate = false,
   borderRadius = 9999,
   className = '',
   style,
@@ -61,6 +63,44 @@ export default function ProgressBar({
   const heightValue = typeof height === 'number' ? `${height}px` : height;
   const widthValue = typeof width === 'number' ? `${width}px` : width;
   const borderRadiusValue = typeof borderRadius === 'number' ? `${borderRadius}px` : borderRadius;
+
+  if (indeterminate) {
+    return (
+      <div
+        className={`relative overflow-hidden bg-[var(--bg-secondary)] ${className}`}
+        style={{
+          height: heightValue,
+          width: widthValue,
+          borderRadius: borderRadiusValue,
+          ...style,
+        }}
+      >
+        <motion.div
+          className="absolute inset-y-0 w-1/3"
+          style={{
+            ...getBackgroundStyle(),
+            borderRadius: borderRadiusValue,
+          }}
+          animate={{
+            x: ['-100%', '300%'],
+          }}
+          transition={{
+            duration: 1.5,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        >
+          {showShimmer && (
+            <motion.div
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+              animate={{ x: ['-100%', '100%'] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+            />
+          )}
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div

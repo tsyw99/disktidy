@@ -15,6 +15,7 @@ pub struct ScanOptions {
     pub mode: String,
     pub include_hidden: bool,
     pub include_system: bool,
+    pub exclude_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

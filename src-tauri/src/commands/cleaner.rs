@@ -330,6 +330,22 @@ pub async fn export_report_html(
     generator.export_html(&report)
 }
 
+/// 将文件移动到回收站
+#[tauri::command]
+pub async fn move_files_to_recycle_bin(
+    paths: Vec<String>,
+) -> Result<(), String> {
+    for path_str in paths {
+        let path = PathBuf::from(&path_str);
+        if path.exists() {
+            RecycleBin::move_to_recycle_bin(&path)
+                .await
+                .map_err(|e| format!("{}: {}", e.error_code(), e))?;
+        }
+    }
+    Ok(())
+}
+
 async fn perform_clean(
     clean_id: String,
     files: Vec<PathBuf>,

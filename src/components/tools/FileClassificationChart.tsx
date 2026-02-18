@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { PieChart, BarChart3 } from 'lucide-react';
 import type { FileTypeStats } from '../../types';
 import { useUIStore } from '../../stores';
 import { formatBytes } from '../../utils/format';
@@ -42,6 +43,7 @@ export default function FileClassificationChart({
   totalSize,
   onCategoryClick,
 }: FileClassificationChartProps) {
+  const [chartType, setChartType] = useState<'pie' | 'bar'>('pie');
   const theme = useUIStore((state) => state.theme);
   const isDark = theme === 'dark';
 
@@ -51,19 +53,8 @@ export default function FileClassificationChart({
       value: cat.total_size,
       count: cat.count,
       percentage: cat.percentage,
-      itemStyle: {
-        color: {
-          type: 'linear',
-          x: 0,
-          y: 0,
-          x2: 1,
-          y2: 1,
-          colorStops: [
-            { offset: 0, color: getCategoryColor(cat.category, index)[0] },
-            { offset: 1, color: getCategoryColor(cat.category, index)[1] },
-          ],
-        },
-      },
+      category: cat.category,
+      color: getCategoryColor(cat.category, index),
     }));
   }, [categories]);
 
@@ -105,26 +96,16 @@ export default function FileClassificationChart({
       legend: {
         type: 'scroll',
         orient: 'vertical',
-        right: 20,
-        top: 'center',
-        itemWidth: 12,
-        itemHeight: 12,
-        itemGap: 12,
+        right: 10,
+        top: 'middle',
+        itemWidth: 10,
+        itemHeight: 10,
+        itemGap: 10,
         textStyle: {
           color: isDark ? '#9ca3af' : '#64748b',
-          fontSize: 12,
-          rich: {
-            name: {
-              width: 80,
-              fontSize: 12,
-            },
-            value: {
-              width: 60,
-              align: 'right',
-              fontSize: 12,
-              fontWeight: 500,
-            },
-          },
+          fontSize: 11,
+          width: 90,
+          overflow: 'truncate',
         },
         formatter: (name: string) => {
           const item = chartData.find(d => d.name === name);
@@ -143,11 +124,11 @@ export default function FileClassificationChart({
         {
           name: '文件分类',
           type: 'pie',
-          radius: ['45%', '75%'],
-          center: ['35%', '50%'],
+          radius: ['40%', '65%'],
+          center: ['50%', '50%'],
           avoidLabelOverlap: true,
           itemStyle: {
-            borderRadius: 6,
+            borderRadius: 5,
             borderColor: isDark ? 'rgba(26, 26, 46, 0.8)' : 'rgba(255, 255, 255, 0.8)',
             borderWidth: 2,
           },
@@ -156,14 +137,32 @@ export default function FileClassificationChart({
           },
           emphasis: {
             scale: true,
-            scaleSize: 8,
+            scaleSize: 6,
             itemStyle: {
-              shadowBlur: 20,
+              shadowBlur: 15,
               shadowOffsetX: 0,
               shadowColor: 'rgba(0, 0, 0, 0.3)',
             },
           },
-          data: chartData,
+          data: chartData.map((item) => ({
+            name: item.name,
+            value: item.value,
+            count: item.count,
+            percentage: item.percentage,
+            itemStyle: {
+              color: {
+                type: 'linear',
+                x: 0,
+                y: 0,
+                x2: 1,
+                y2: 1,
+                colorStops: [
+                  { offset: 0, color: item.color[0] },
+                  { offset: 1, color: item.color[1] },
+                ],
+              },
+            },
+          })),
           animationType: 'scale',
           animationEasing: 'elasticOut',
           animationDelay: (idx: number) => idx * 50,
@@ -172,22 +171,22 @@ export default function FileClassificationChart({
       graphic: [
         {
           type: 'text',
-          left: '28%',
-          top: '42%',
+          left: '50%',
+          top: '45%',
           style: {
             text: '总计',
-            fontSize: 14,
+            fontSize: 13,
             fill: isDark ? '#9ca3af' : '#64748b',
             textAlign: 'center',
           },
         },
         {
           type: 'text',
-          left: '28%',
+          left: '50%',
           top: '52%',
           style: {
             text: formatBytes(totalSize),
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: 'bold',
             fill: isDark ? '#f3f4f6' : '#1e293b',
             textAlign: 'center',
@@ -195,10 +194,10 @@ export default function FileClassificationChart({
         },
       ],
     };
-  }, [chartData, totalSize, isDark, categories]);
+  }, [chartData, totalSize, isDark]);
 
   const barOption = useMemo(() => {
-    const topCategories = categories.slice(0, 10);
+    const sortedData = [...chartData].sort((a, b) => b.value - a.value);
     
     return {
       tooltip: {
@@ -220,17 +219,23 @@ export default function FileClassificationChart({
         },
         formatter: (params: any) => {
           const item = params[0];
-          const cat = categories.find(c => c.display_name === item.name);
+          const dataItem = sortedData[item.dataIndex];
           return `
-            <div style="min-width: 160px;">
-              <div style="font-weight: 600; margin-bottom: 8px;">${item.name}</div>
+            <div style="min-width: 180px;">
+              <div style="font-weight: 600; font-size: 14px; margin-bottom: 8px; color: ${isDark ? '#f3f4f6' : '#1e293b'};">
+                ${item.name}
+              </div>
               <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                 <span style="color: ${isDark ? '#9ca3af' : '#64748b'};">文件数量</span>
-                <span>${cat?.count.toLocaleString()} 个</span>
+                <span style="font-weight: 500;">${dataItem?.count.toLocaleString()} 个</span>
               </div>
-              <div style="display: flex; justify-content: space-between;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                 <span style="color: ${isDark ? '#9ca3af' : '#64748b'};">占用空间</span>
                 <span style="font-weight: 500; color: ${item.color};">${formatBytes(item.value)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span style="color: ${isDark ? '#9ca3af' : '#64748b'};">占比</span>
+                <span style="font-weight: 600; color: ${item.color};">${dataItem?.percentage.toFixed(2)}%</span>
               </div>
             </div>
           `;
@@ -238,15 +243,34 @@ export default function FileClassificationChart({
       },
       grid: {
         left: '3%',
-        right: '12%',
+        right: '8%',
         bottom: '3%',
-        top: '3%',
+        top: '5%',
         containLabel: true,
       },
       xAxis: {
+        type: 'category',
+        data: sortedData.map(d => d.name),
+        axisLine: {
+          lineStyle: {
+            color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          },
+        },
+        axisLabel: {
+          color: isDark ? '#9ca3af' : '#64748b',
+          fontSize: 11,
+          rotate: 30,
+          interval: 0,
+        },
+        axisTick: {
+          show: false,
+        },
+      },
+      yAxis: {
         type: 'value',
-        axisLine: { show: false },
-        axisTick: { show: false },
+        axisLine: {
+          show: false,
+        },
         axisLabel: {
           color: isDark ? '#9ca3af' : '#64748b',
           fontSize: 11,
@@ -268,87 +292,136 @@ export default function FileClassificationChart({
           },
         },
       },
-      yAxis: {
-        type: 'category',
-        data: topCategories.map(c => c.display_name).reverse(),
-        axisLine: { show: false },
-        axisTick: { show: false },
-        axisLabel: {
-          color: isDark ? '#e5e7eb' : '#374151',
-          fontSize: 12,
-          fontWeight: 500,
-        },
-      },
       series: [
         {
           name: '占用空间',
           type: 'bar',
-          data: topCategories.map((cat, index) => ({
-            value: cat.total_size,
+          data: sortedData.map((item) => ({
+            value: item.value,
             itemStyle: {
               color: {
                 type: 'linear',
                 x: 0,
                 y: 0,
-                x2: 1,
-                y2: 0,
+                x2: 0,
+                y2: 1,
                 colorStops: [
-                  { offset: 0, color: getCategoryColor(cat.category, index)[0] },
-                  { offset: 1, color: getCategoryColor(cat.category, index)[1] },
+                  { offset: 0, color: item.color[0] },
+                  { offset: 1, color: item.color[1] },
                 ],
               },
-              borderRadius: [0, 4, 4, 0],
+              borderRadius: [6, 6, 0, 0],
             },
-          })).reverse(),
-          barWidth: '60%',
-          animationDelay: (idx: number) => idx * 100,
+          })),
+          barWidth: '50%',
+          animationDelay: (idx: number) => idx * 50,
           animationEasing: 'elasticOut',
+          animationDuration: 800,
+          emphasis: {
+            itemStyle: {
+              shadowBlur: 20,
+              shadowColor: 'rgba(139, 92, 246, 0.5)',
+            },
+          },
         },
       ],
+      animation: true,
+      animationDuration: 1000,
+      animationEasing: 'cubicOut',
     };
-  }, [categories, isDark]);
+  }, [chartData, isDark]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="w-full">
       <motion.div
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="panel p-6"
+        className="panel p-4 lg:p-6 overflow-hidden"
       >
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]" />
-          文件类型分布
-        </h3>
-        <ReactECharts
-          option={pieOption}
-          style={{ width: '100%', height: 400 }}
-          opts={{ renderer: 'svg' }}
-          onEvents={{
-            click: (params: any) => {
-              if (onCategoryClick && params.name) {
-                onCategoryClick(params.name);
-              }
-            },
-          }}
-        />
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
-        className="panel p-6"
-      >
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-gradient-to-r from-[#10b981] to-[#34d399]" />
-          空间占用排行
-        </h3>
-        <ReactECharts
-          option={barOption}
-          style={{ width: '100%', height: 400 }}
-          opts={{ renderer: 'svg' }}
-        />
+        <div className="flex items-center justify-between mb-3 lg:mb-4">
+          <h3 className="text-base lg:text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]" />
+            文件类型分布
+          </h3>
+          <div className="flex items-center gap-1 p-1 rounded-lg bg-[var(--bg-tertiary)]">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setChartType('pie')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
+                chartType === 'pie'
+                  ? 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white shadow-sm'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <PieChart className="w-3.5 h-3.5" />
+              饼图
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setChartType('bar')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
+                chartType === 'bar'
+                  ? 'bg-gradient-to-r from-[#10b981] to-[#34d399] text-white shadow-sm'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              柱状图
+            </motion.button>
+          </div>
+        </div>
+        <div className="w-full" style={{ minHeight: 300, height: 'clamp(300px, 40vw, 400px)' }}>
+          <AnimatePresence mode="wait">
+            {chartType === 'pie' ? (
+              <motion.div
+                key="pie"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.3 }}
+                className="w-full h-full"
+              >
+                <ReactECharts
+                  option={pieOption}
+                  style={{ width: '100%', height: '100%' }}
+                  opts={{ renderer: 'svg' }}
+                  onEvents={{
+                    click: (params: any) => {
+                      if (onCategoryClick && params.name) {
+                        onCategoryClick(params.name);
+                      }
+                    },
+                  }}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="bar"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.3 }}
+                className="w-full h-full"
+              >
+                <ReactECharts
+                  option={barOption}
+                  style={{ width: '100%', height: '100%' }}
+                  opts={{ renderer: 'svg' }}
+                  onEvents={{
+                    click: (params: any) => {
+                      if (onCategoryClick && params.name) {
+                        onCategoryClick(params.name);
+                      }
+                    },
+                  }}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </motion.div>
     </div>
   );

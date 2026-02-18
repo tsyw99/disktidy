@@ -19,14 +19,25 @@ export function formatPercent(value: number, decimals = 1): string {
 }
 
 export function formatDate(timestamp: number): string {
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(new Date(timestamp));
+  if (!timestamp || timestamp <= 0 || !Number.isFinite(timestamp)) {
+    return '未知';
+  }
+  try {
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) {
+      return '未知';
+    }
+    return new Intl.DateTimeFormat('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).format(date);
+  } catch {
+    return '未知';
+  }
 }
 
 export function formatDuration(ms: number): string {

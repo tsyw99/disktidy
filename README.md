@@ -37,6 +37,7 @@ npm install
 
 ```bash
 npm run dev
+npm run tauri dev
 ```
 
 ### 构建应用

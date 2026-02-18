@@ -1,18 +1,48 @@
 import { useState } from 'react';
-import { Settings, Sun, Moon, Monitor, HardDrive, Trash2, Shield, Bell, FolderX, FileCheck, AlertTriangle, Construction, Info, Github, User } from 'lucide-react';
-import { useUIStore } from '../stores';
+import { Settings, Sun, Moon, Monitor, HardDrive, Trash2, Shield, Bell, FolderX, FileCheck, AlertTriangle, Construction, Info, Github, User, X, FolderOpen } from 'lucide-react';
+import { open } from '@tauri-apps/plugin-dialog';
+import { useUIStore, useSettingsStore, useSettingsActions } from '../stores';
 import { Modal } from '../components/common';
 
-export default function SettingsPage() {
+function SettingsPage() {
   const theme = useUIStore((state) => state.theme);
   const { toggleTheme } = useUIStore((state) => state.actions);
+  
+  const scanSettings = useSettingsStore((state) => state.scanSettings);
+  const { setScanSettings, addExcludePath, removeExcludePath } = useSettingsActions();
 
   const [activeModal, setActiveModal] = useState<string | null>(null);
 
-  const closeModal = () => setActiveModal(null);
+  const closeModal = () => {
+    setActiveModal(null);
+  };
 
   const showDevelopingToast = () => {
     setActiveModal('developing');
+  };
+
+  const handleSelectExcludePath = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: '选择要排除的目录',
+      });
+      if (selected && typeof selected === 'string') {
+        addExcludePath(selected);
+      }
+    } catch (error) {
+      console.error('选择目录失败:', error);
+    }
+  };
+
+  const handleRemoveExcludePath = (path: string) => {
+    removeExcludePath(path);
+  };
+
+  const handleSaveScanSettings = () => {
+    // 设置已通过响应式更新保存到 store，这里只需关闭弹窗
+    closeModal();
   };
 
   return (
@@ -74,8 +104,8 @@ export default function SettingsPage() {
             <SettingItem
               icon={<HardDrive className="w-5 h-5" />}
               title="磁盘扫描设置"
-              description="配置扫描范围和排除项"
-              onClick={showDevelopingToast}
+              description={`已配置 ${scanSettings.excludePaths.length} 个排除目录`}
+              onClick={() => setActiveModal('diskScan')}
             />
             <SettingItem
               icon={<Trash2 className="w-5 h-5" />}
@@ -118,7 +148,7 @@ export default function SettingsPage() {
               </div>
               <div className="flex items-center gap-3 text-sm text-[var(--text-secondary)]">
                 <Github className="w-4 h-4 text-[var(--color-primary)]" />
-                <span>GitHub：@tsyw120</span>
+                <span>GitHub：@tsyw99</span>
               </div>
             </div>
 
@@ -166,7 +196,7 @@ export default function SettingsPage() {
         overlay={{ opacity: 0.6, blur: true }}
         buttons={[
           { text: '取消', onClick: closeModal, variant: 'secondary' },
-          { text: '保存设置', onClick: closeModal, variant: 'primary' },
+          { text: '保存设置', onClick: handleSaveScanSettings, variant: 'primary' },
         ]}
       >
         <div className="space-y-4">
@@ -175,18 +205,29 @@ export default function SettingsPage() {
               <FolderX className="w-4 h-4 text-[var(--color-primary)]" />
               排除目录
             </h4>
-            <div className="space-y-2">
-              {['C:\\Windows\\System32', 'C:\\Program Files', 'C:\\$Recycle.Bin'].map((path) => (
-                <div key={path} className="flex items-center justify-between p-2 rounded bg-[var(--bg-tertiary)]">
-                  <span className="text-xs text-[var(--text-secondary)] font-mono">{path}</span>
-                  <button className="text-xs text-[var(--text-tertiary)] hover:text-red-500 transition-colors">
-                    移除
-                  </button>
-                </div>
-              ))}
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {scanSettings.excludePaths.length === 0 ? (
+                <p className="text-xs text-[var(--text-tertiary)] py-2">暂无排除目录</p>
+              ) : (
+                scanSettings.excludePaths.map((path) => (
+                  <div key={path} className="flex items-center justify-between p-2 rounded bg-[var(--bg-tertiary)]">
+                    <span className="text-xs text-[var(--text-secondary)] font-mono truncate mr-2">{path}</span>
+                    <button 
+                      onClick={() => handleRemoveExcludePath(path)}
+                      className="text-xs text-[var(--text-tertiary)] hover:text-red-500 transition-colors flex-shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
-            <button className="mt-3 text-xs text-[var(--color-primary)] hover:underline">
-              + 添加排除目录
+            <button 
+              onClick={handleSelectExcludePath}
+              className="mt-3 w-full px-3 py-2 text-xs bg-[var(--color-primary)] text-white rounded hover:opacity-90 flex items-center justify-center gap-2"
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+              选择要排除的目录
             </button>
           </div>
 
@@ -194,18 +235,30 @@ export default function SettingsPage() {
             <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">扫描选项</h4>
             <div className="space-y-3">
               <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-[var(--border-color)]" />
+                <input 
+                  type="checkbox" 
+                  checked={scanSettings.includeHidden}
+                  onChange={(e) => setScanSettings({ includeHidden: e.target.checked })}
+                  className="w-4 h-4 rounded border-[var(--border-color)]" 
+                />
                 <span className="text-sm text-[var(--text-secondary)]">扫描隐藏文件</span>
               </label>
               <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-[var(--border-color)]" />
+                <input 
+                  type="checkbox" 
+                  checked={scanSettings.includeSystem}
+                  onChange={(e) => setScanSettings({ includeSystem: e.target.checked })}
+                  className="w-4 h-4 rounded border-[var(--border-color)]" 
+                />
                 <span className="text-sm text-[var(--text-secondary)]">扫描系统文件</span>
               </label>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4 rounded border-[var(--border-color)]" />
-                <span className="text-sm text-[var(--text-secondary)]">深度扫描（耗时较长）</span>
-              </label>
             </div>
+          </div>
+          
+          <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <p className="text-xs text-blue-600 dark:text-blue-400">
+              提示：排除目录设置仅对磁盘扫描功能生效，专项清理（微信/QQ等）使用独立算法不受此设置影响。
+            </p>
           </div>
         </div>
       </Modal>
@@ -433,3 +486,6 @@ function SettingItem({
     </button>
   );
 }
+
+export default SettingsPage;
+

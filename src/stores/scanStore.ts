@@ -3,6 +3,7 @@ import { devtools } from 'zustand/middleware';
 import { UnlistenFn } from '@tauri-apps/api/event';
 import type { ScanMode, ScanStatus, ScanProgress, ScanResult, ScanOptions, CleanResult } from '../types';
 import { scanService } from '../services/scanService';
+import { useSettingsStore } from './settingsStore';
 
 interface ScanState {
   scanMode: ScanMode;
@@ -57,6 +58,7 @@ const defaultScanOptions: ScanOptions = {
   mode: 'quick',
   include_hidden: false,
   include_system: false,
+  exclude_paths: [],
 };
 
 export const useScanStore = create<ScanState>()(
@@ -200,22 +202,27 @@ export const useScanStore = create<ScanState>()(
           try {
             let scanPaths: string[];
             let options: ScanOptions = { ...defaultScanOptions };
+            
+            // 获取用户设置的扫描配置
+            const scanSettings = useSettingsStore.getState().scanSettings;
 
             if (scanMode === 'quick') {
               scanPaths = [];
               options = {
                 ...defaultScanOptions,
                 mode: 'quick',
-                include_hidden: false,
-                include_system: false,
+                include_hidden: scanSettings.includeHidden,
+                include_system: scanSettings.includeSystem,
+                exclude_paths: scanSettings.excludePaths,
               };
             } else {
               scanPaths = selectedScanPath ? [selectedScanPath] : [selectedDisk];
               options = {
                 ...defaultScanOptions,
                 mode: 'deep',
-                include_hidden: true,
-                include_system: false,
+                include_hidden: scanSettings.includeHidden,
+                include_system: scanSettings.includeSystem,
+                exclude_paths: scanSettings.excludePaths,
               };
             }
 

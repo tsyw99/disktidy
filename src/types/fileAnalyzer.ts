@@ -253,19 +253,34 @@ export interface LargeFileFilter {
 }
 
 export interface LargeFileScanProgress {
-  scan_id: string;
-  current_path: string;
-  scanned_files: number;
-  found_files: number;
-  scanned_size: number;
-  total_size: number;
+  scanId: string;
+  currentPath: string;
+  scannedFiles: number;
+  foundFiles: number;
+  scannedSize: number;
+  totalSize: number;
   percent: number;
   speed: number;
   status: 'idle' | 'scanning' | 'paused' | 'completed' | 'error';
 }
 
+export interface JunkFileScanProgress {
+  scanId: string;
+  currentPath: string;
+  scannedFiles: number;
+  foundFiles: number;
+  scannedSize: number;
+  totalSize: number;
+  percent: number;
+  currentPhase: string;
+  status: 'idle' | 'scanning' | 'paused' | 'completed' | 'error';
+  speed?: number;
+}
+
 export const EVENT_LARGE_FILE_PROGRESS = 'large_file:progress';
 export const EVENT_LARGE_FILE_COMPLETE = 'large_file:complete';
+export const EVENT_JUNK_FILE_PROGRESS = 'junk_file:progress';
+export const EVENT_JUNK_FILE_COMPLETE = 'junk_file:complete';
 
 export const DEFAULT_GARBAGE_DETECTOR_OPTIONS: GarbageDetectorOptions = {
   include_system_temp: true,

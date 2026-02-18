@@ -4,17 +4,18 @@ pub mod file_analyzer;
 pub mod cleaner;
 pub mod settings;
 pub mod app_cache;
-pub mod large_file_scan;
+pub mod large_file_scanner;
 pub mod cancellable_file_classifier;
 pub mod driver_manager;
 pub mod software_residue;
+pub mod scanner_framework;
 
 pub use system_info::*;
 pub use disk_scan::*;
 pub use file_analyzer::*;
 pub use cleaner::*;
 pub use settings::*;
-pub use large_file_scan::*;
+// large_file_scanner 的函数通过 large_file_scanner:: 前缀访问，避免命名冲突
 pub use cancellable_file_classifier::*;
 pub use driver_manager::*;
 

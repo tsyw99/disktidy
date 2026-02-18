@@ -4,7 +4,7 @@ import {
   SystemPage, 
   ScanPage, 
   CleanPage, 
-  AnalyzePage, 
+  FileAnalysisPage,
   ToolsPage,
   SettingsPage 
 } from './pages';
@@ -22,7 +22,7 @@ function App() {
       case 'clean':
         return <CleanPage />;
       case 'analyze':
-        return <AnalyzePage />;
+        return <FileAnalysisPage />;
       case 'tools':
         return <ToolsPage />;
       case 'settings':

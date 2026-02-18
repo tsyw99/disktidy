@@ -115,13 +115,13 @@ export default function CategoryDetailPanel({
     <AnimatePresence>
       {category && (
         <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: 20 }}
-          className="panel p-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          className="panel p-4 lg:p-6"
         >
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
+          <div className="flex items-center justify-between mb-4 lg:mb-6">
+            <h3 className="text-base lg:text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]" />
               {category.display_name} 详情
             </h3>
@@ -135,18 +135,18 @@ export default function CategoryDetailPanel({
             </motion.button>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 lg:gap-4 mb-4 lg:mb-6">
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]/50"
+              className="p-3 lg:p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]/50"
             >
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-1 lg:mb-2">
                 <FileText className="w-4 h-4 text-[var(--color-primary)]" />
                 <span className="text-xs text-[var(--text-tertiary)]">文件数量</span>
               </div>
-              <p className="text-2xl font-bold text-[var(--text-primary)]">
+              <p className="text-xl lg:text-2xl font-bold text-[var(--text-primary)]">
                 {category.count.toLocaleString()}
               </p>
             </motion.div>
@@ -155,13 +155,13 @@ export default function CategoryDetailPanel({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]/50"
+              className="p-3 lg:p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]/50"
             >
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-1 lg:mb-2">
                 <HardDrive className="w-4 h-4 text-[#10b981]" />
                 <span className="text-xs text-[var(--text-tertiary)]">占用空间</span>
               </div>
-              <p className="text-2xl font-bold text-[#10b981]">
+              <p className="text-xl lg:text-2xl font-bold text-[#10b981]">
                 {formatBytes(category.total_size)}
               </p>
             </motion.div>
@@ -170,28 +170,30 @@ export default function CategoryDetailPanel({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]/50"
+              className="p-3 lg:p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]/50"
             >
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-1 lg:mb-2">
                 <Folder className="w-4 h-4 text-[#f59e0b]" />
                 <span className="text-xs text-[var(--text-tertiary)]">占比</span>
               </div>
-              <p className="text-2xl font-bold text-[#f59e0b]">
+              <p className="text-xl lg:text-2xl font-bold text-[#f59e0b]">
                 {category.percentage.toFixed(1)}%
               </p>
             </motion.div>
           </div>
 
           {extensionChartOption && extensionData.length > 1 && (
-            <div className="mb-6">
+            <div className="mb-4 lg:mb-6">
               <h4 className="text-sm font-medium text-[var(--text-secondary)] mb-3">
                 扩展名分布
               </h4>
-              <ReactECharts
-                option={extensionChartOption}
-                style={{ width: '100%', height: 200 }}
-                opts={{ renderer: 'svg' }}
-              />
+              <div className="w-full" style={{ minHeight: 180, height: 'clamp(180px, 25vw, 220px)' }}>
+                <ReactECharts
+                  option={extensionChartOption}
+                  style={{ width: '100%', height: '100%' }}
+                  opts={{ renderer: 'svg' }}
+                />
+              </div>
             </div>
           )}
 
@@ -211,7 +213,7 @@ export default function CategoryDetailPanel({
                     className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-tertiary)] hover:bg-[var(--bg-secondary)] transition-colors group cursor-pointer"
                     onClick={() => openFileLocation(file.path)}
                   >
-                    <div className="w-8 h-8 rounded-lg bg-[var(--color-primary)]/10 flex items-center justify-center text-[var(--color-primary)]">
+                    <div className="w-8 h-8 rounded-lg bg-[var(--color-primary)]/10 flex items-center justify-center text-[var(--color-primary)] flex-shrink-0">
                       <FileText className="w-4 h-4" />
                     </div>
                     <div className="flex-1 min-w-0">

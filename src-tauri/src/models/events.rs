@@ -11,6 +11,8 @@ pub const EVENT_ANALYSIS_PROGRESS: &str = "analysis:progress";
 pub const EVENT_ANALYSIS_COMPLETE: &str = "analysis:complete";
 pub const EVENT_LARGE_FILE_PROGRESS: &str = "large_file:progress";
 pub const EVENT_LARGE_FILE_COMPLETE: &str = "large_file:complete";
+pub const EVENT_JUNK_FILE_PROGRESS: &str = "junk_file:progress";
+pub const EVENT_JUNK_FILE_COMPLETE: &str = "junk_file:complete";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]

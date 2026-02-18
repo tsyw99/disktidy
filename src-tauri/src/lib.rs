@@ -5,6 +5,9 @@ pub mod utils;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 初始化大文件扫描器
+    modules::large_file_scanner::init_scanner();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
@@ -36,6 +39,7 @@ pub fn run() {
             commands::cleaner::empty_recycle_bin,
             commands::cleaner::get_recycle_bin_info,
             commands::cleaner::check_file_safety,
+            commands::cleaner::move_files_to_recycle_bin,
             commands::cleaner::generate_clean_report,
             commands::cleaner::export_report_json,
             commands::cleaner::export_report_html,
@@ -50,6 +54,13 @@ pub fn run() {
             commands::file_analyzer::scan_junk_files,
             commands::file_analyzer::scan_junk_by_type,
             commands::file_analyzer::get_junk_file_types,
+            commands::file_analyzer::junk_file_scan_start,
+            commands::file_analyzer::junk_file_scan_pause,
+            commands::file_analyzer::junk_file_scan_resume,
+            commands::file_analyzer::junk_file_scan_cancel,
+            commands::file_analyzer::junk_file_scan_progress,
+            commands::file_analyzer::junk_file_scan_result,
+            commands::file_analyzer::junk_file_scan_clear,
             commands::settings::settings_get,
             commands::settings::settings_update,
             commands::settings::settings_update_partial,
@@ -77,13 +88,13 @@ pub fn run() {
             commands::app_config::is_app_configured,
             commands::app_config::get_all_configured_apps,
             commands::app_config::validate_path,
-            commands::large_file_scan::large_file_scan_start,
-            commands::large_file_scan::large_file_scan_pause,
-            commands::large_file_scan::large_file_scan_resume,
-            commands::large_file_scan::large_file_scan_cancel,
-            commands::large_file_scan::large_file_scan_progress,
-            commands::large_file_scan::large_file_scan_result,
-            commands::large_file_scan::large_file_scan_clear,
+            commands::large_file::large_file_scan_start,
+            commands::large_file::large_file_scan_pause,
+            commands::large_file::large_file_scan_resume,
+            commands::large_file::large_file_scan_cancel,
+            commands::large_file::large_file_scan_get_progress,
+            commands::large_file::large_file_scan_get_result,
+            commands::large_file::large_file_scan_clear,
             commands::software_residue::residue_scan_start,
             commands::software_residue::residue_scan_pause,
             commands::software_residue::residue_scan_resume,

@@ -144,6 +144,13 @@ fn get_disk_info(drive: &str) -> Result<DiskInfo, String> {
 
     let _drive_type = unsafe { GetDriveTypeW(windows::core::PCWSTR(wide_drive.as_ptr())) };
     
+    // 确保 mount_point 以反斜杠结尾，表示根目录（如 E:\）
+    let mount_point = if drive.ends_with('\\') {
+        drive.to_string()
+    } else {
+        format!("{}\\", drive)
+    };
+
     let name = if volume_name_str.is_empty() {
         format!("本地磁盘 ({})", drive.trim_end_matches('\\'))
     } else {
@@ -152,7 +159,7 @@ fn get_disk_info(drive: &str) -> Result<DiskInfo, String> {
 
     Ok(DiskInfo {
         name,
-        mount_point: drive.trim_end_matches('\\').to_string(),
+        mount_point,
         file_system: file_system_str,
         total_size: total_bytes,
         used_size: used_bytes,

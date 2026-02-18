@@ -5,6 +5,7 @@ export interface ScanOptions {
   mode: string;
   include_hidden: boolean;
   include_system: boolean;
+  exclude_paths: string[];
 }
 
 export type ScanStatus = 'idle' | 'scanning' | 'paused' | 'completed' | 'cancelled' | 'failed' | 'error';

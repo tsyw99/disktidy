@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use tauri::AppHandle;
 
 use crate::models::{
     GarbageAnalysisResult, GarbageCategory,
@@ -11,6 +12,9 @@ use crate::modules::file_analyzer::{
     LargeFileAnalyzer, LargeFileStats,
     DuplicateDetector,
     JunkFileDetector, JunkScanOptions, JunkScanResult, JunkFileType,
+    JunkFileScanProgress, start_junk_file_scan, pause_junk_file_scan,
+    resume_junk_file_scan, cancel_junk_file_scan, get_junk_file_scan_progress,
+    get_junk_file_scan_result, clear_junk_file_scan_result,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -353,6 +357,7 @@ pub async fn scan_junk_files(
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JunkScanOptionsJson {
     pub scan_paths: Vec<String>,
     pub include_empty_folders: bool,
@@ -477,4 +482,59 @@ pub struct JunkTypeInfo {
     pub display_name: String,
     pub description: String,
     pub icon: String,
+}
+
+// Async junk file scan commands with progress support
+#[tauri::command]
+pub async fn junk_file_scan_start(
+    app: AppHandle,
+    options: Option<JunkScanOptionsJson>,
+) -> Result<String, String> {
+    let opts = options.map(|o| JunkScanOptions {
+        scan_paths: o.scan_paths,
+        include_empty_folders: o.include_empty_folders,
+        include_invalid_shortcuts: o.include_invalid_shortcuts,
+        include_old_logs: o.include_old_logs,
+        include_old_installers: o.include_old_installers,
+        include_invalid_downloads: o.include_invalid_downloads,
+        include_small_files: o.include_small_files,
+        small_file_max_size: o.small_file_max_size,
+        log_max_age_days: o.log_max_age_days,
+        installer_max_age_days: o.installer_max_age_days,
+        exclude_paths: o.exclude_paths,
+        include_hidden: o.include_hidden,
+        include_system: o.include_system,
+    });
+
+    start_junk_file_scan(app, opts).await
+}
+
+#[tauri::command]
+pub async fn junk_file_scan_pause(scan_id: String) -> Result<(), String> {
+    pause_junk_file_scan(&scan_id).await
+}
+
+#[tauri::command]
+pub async fn junk_file_scan_resume(scan_id: String) -> Result<(), String> {
+    resume_junk_file_scan(&scan_id).await
+}
+
+#[tauri::command]
+pub async fn junk_file_scan_cancel(scan_id: String) -> Result<(), String> {
+    cancel_junk_file_scan(&scan_id).await
+}
+
+#[tauri::command]
+pub async fn junk_file_scan_progress(scan_id: String) -> Option<JunkFileScanProgress> {
+    get_junk_file_scan_progress(&scan_id).await
+}
+
+#[tauri::command]
+pub async fn junk_file_scan_result(scan_id: String) -> Option<Vec<JunkScanResult>> {
+    get_junk_file_scan_result(&scan_id).await
+}
+
+#[tauri::command]
+pub async fn junk_file_scan_clear(scan_id: String) -> Result<(), String> {
+    clear_junk_file_scan_result(&scan_id).await
 }

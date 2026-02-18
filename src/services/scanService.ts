@@ -11,12 +11,13 @@ import { EVENT_SCAN_PROGRESS, EVENT_SCAN_COMPLETE } from '../types';
 
 export const scanService = {
   start: (paths: string[], mode: string, options: Partial<ScanOptions> = {}): Promise<string> =>
-    invoke<string>('disk_scan_start', { 
+    invoke<string>('disk_scan_start', {
       options: {
         paths,
         mode,
         include_hidden: options.include_hidden ?? false,
         include_system: options.include_system ?? false,
+        exclude_paths: options.exclude_paths ?? [],
       }
     }),
   
