@@ -15,6 +15,8 @@ import { DEFAULT_LARGE_FILE_FILTER } from '../types/largeFile';
 
 let listenersInitialized = false;
 let listenersInitPromise: Promise<void> | null = null;
+let progressListener: (() => void) | null = null;
+let completeListener: (() => void) | null = null;
 
 interface LargeFileState {
   isScanning: boolean;
@@ -54,7 +56,7 @@ async function ensureListenersInitialized(): Promise<void> {
   }
 
   listenersInitPromise = (async () => {
-    await largeFileService.onProgress((progress) => {
+    progressListener = await largeFileService.onProgress((progress) => {
       const state = useLargeFileStore.getState();
       const { scanId } = state;
       
@@ -70,7 +72,7 @@ async function ensureListenersInitialized(): Promise<void> {
       }
     });
 
-    await largeFileService.onComplete((result) => {
+    completeListener = await largeFileService.onComplete((result) => {
       const state = useLargeFileStore.getState();
       const { scanId } = state;
       if (scanId && result.scan_id === scanId) {
@@ -285,5 +287,15 @@ export const useLargeFileStore = create<LargeFileState>((set, get) => ({
     if (scanId) {
       largeFileService.clearResult(scanId).catch(() => {});
     }
+    if (progressListener) {
+      progressListener();
+      progressListener = null;
+    }
+    if (completeListener) {
+      completeListener();
+      completeListener = null;
+    }
+    listenersInitialized = false;
+    listenersInitPromise = null;
   },
 }));

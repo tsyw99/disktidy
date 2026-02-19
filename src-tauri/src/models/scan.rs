@@ -104,7 +104,7 @@ impl ScanProgress {
             total_size: 0,
             percent: 0.0,
             speed: 0.0,
-            status: ScanStatus::Idle,
+            status: ScanStatus::Scanning,
         }
     }
 }

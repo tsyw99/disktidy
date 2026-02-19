@@ -44,6 +44,13 @@ export default function ScanPage() {
       systemActions.fetchDiskList();
     }
     actions.setupListeners();
+    
+    return () => {
+      if (status === 'scanning' || status === 'paused') {
+        actions.cancelScan();
+      }
+      actions.cleanupListeners();
+    };
   }, []);
 
   useEffect(() => {

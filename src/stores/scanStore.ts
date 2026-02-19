@@ -33,6 +33,7 @@ interface ScanState {
     setSelectedDisk: (disk: string) => void;
     setSelectedScanPath: (path: string | null) => void;
     setupListeners: () => Promise<void>;
+    cleanupListeners: () => void;
     startScan: () => Promise<void>;
     pauseScan: () => Promise<void>;
     resumeScan: () => Promise<void>;
@@ -135,6 +136,21 @@ export const useScanStore = create<ScanState>()(
             progressListener: unlistenProgress,
             completeListener: unlistenComplete,
             isListenersSetup: true,
+          });
+        },
+
+        cleanupListeners: () => {
+          const { progressListener, completeListener } = get();
+          if (progressListener) {
+            progressListener();
+          }
+          if (completeListener) {
+            completeListener();
+          }
+          set({ 
+            progressListener: null,
+            completeListener: null,
+            isListenersSetup: false,
           });
         },
 

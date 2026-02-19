@@ -24,7 +24,6 @@ use crate::modules::scanner_framework::{
 use crate::utils::file_category::{FileCategoryRegistry, get_category_description, get_category_display_name};
 
 const PROGRESS_UPDATE_INTERVAL: u64 = 50;
-const ESTIMATED_FILES_PER_PATH: u64 = 10000;
 
 /// 完整文件分类（内部使用）
 #[derive(Debug, Clone)]
@@ -86,10 +85,11 @@ fn get_quick_scan_paths() -> Vec<String> {
 
 /// 启动磁盘扫描
 pub async fn start_scan(app: AppHandle, options: ScanOptions) -> Result<String, String> {
-    let progress = ScanProgress::new("");
+    let scan_id = crate::models::generate_scan_id();
+    let progress = ScanProgress::new(&scan_id);
 
     SCAN_MANAGER
-        .start_scan(app, progress, move |mut ctx| async move {
+        .start_scan_with_id(app, scan_id.clone(), progress, move |mut ctx| async move {
             perform_scan(&mut ctx, options).await
         })
         .await
@@ -120,36 +120,36 @@ async fn perform_scan(
     let total_paths = scan_paths.len() as u64;
     let mut current_path_index = 0u64;
     let start_instant = Instant::now();
-    let mut last_update = 0u64;
-    let mut total_files = 0u64;
-    let mut total_size = 0u64;
+    let mut last_scanned_update = 0u64;
+    let mut scanned_all_files = 0u64;
+    let mut scanned_all_size = 0u64;
+    let mut categorized_files_count = 0u64;
+    let mut categorized_size = 0u64;
 
     let mut full_categories: HashMap<String, FullFileCategory> = HashMap::new();
 
     for path_str in &scan_paths {
-        // 检查是否取消
         if *ctx.cancel_receiver.borrow() {
             result.status = ScanStatus::Cancelled;
             return Ok(result);
         }
 
-        // 检查是否暂停
         while *ctx.pause_receiver.borrow() {
             let progress = ScanProgress {
                 scan_id: ctx.scan_id.clone(),
                 current_path: path_str.clone(),
-                scanned_files: total_files,
-                scanned_size: total_size,
+                scanned_files: scanned_all_files,
+                scanned_size: scanned_all_size,
+                total_files: categorized_files_count,
+                total_size: categorized_size,
                 percent: 0.0,
                 speed: 0.0,
                 status: ScanStatus::Paused,
-                ..ctx.progress.clone()
             };
             let _ = ctx.app.emit(EVENT_SCAN_PROGRESS, &progress);
             
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             
-            // 暂停期间检查是否取消
             if *ctx.cancel_receiver.borrow() {
                 result.status = ScanStatus::Cancelled;
                 return Ok(result);
@@ -162,10 +162,15 @@ async fn perform_scan(
             continue;
         }
 
-        // 收集所有文件
         let files: Vec<DirEntry> = walker.walk_files(path).collect();
+        let files_count = files.len() as u64;
+        
+        let path_total_size: u64 = files
+            .iter()
+            .filter_map(|entry| entry.metadata().ok().map(|m| m.len()))
+            .sum();
+        scanned_all_size += path_total_size;
 
-        // 并行处理文件分类
         let categorized_files: Vec<(String, FileInfo)> = files
             .into_par_iter()
             .filter_map(|entry| {
@@ -193,7 +198,6 @@ async fn perform_scan(
             })
             .collect();
 
-        // 合并到分类中
         for (category_name, file_info) in categorized_files {
             let file_size = file_info.size;
             let category = full_categories.entry(category_name.clone()).or_insert_with(|| {
@@ -207,31 +211,24 @@ async fn perform_scan(
 
             category.total_size += file_size;
             category.files.push(file_info);
-            total_files += 1;
-            total_size += file_size;
+            categorized_files_count += 1;
+            categorized_size += file_size;
         }
 
-        // 更新进度
-        if total_files - last_update >= PROGRESS_UPDATE_INTERVAL {
-            last_update = total_files;
+        scanned_all_files += files_count;
+        
+        if scanned_all_files - last_scanned_update >= PROGRESS_UPDATE_INTERVAL || current_path_index == total_paths - 1 {
+            last_scanned_update = scanned_all_files;
             
             let path_progress = if total_paths > 0 {
-                (current_path_index as f32 / total_paths as f32) * 100.0
+                ((current_path_index + 1) as f32 / total_paths as f32) * 100.0
             } else {
                 0.0
             };
-            let file_progress_factor = 0.3;
-            let estimated_files = ESTIMATED_FILES_PER_PATH * total_paths;
-            let file_progress = if estimated_files > 0 {
-                (total_files as f32 / estimated_files as f32).min(1.0) * 100.0
-            } else {
-                0.0
-            };
-            let percent = (path_progress * (1.0 - file_progress_factor) + file_progress * file_progress_factor).min(99.0);
-
+            
             let elapsed = start_instant.elapsed().as_secs_f64();
             let speed = if elapsed > 0.0 {
-                total_size as f64 / elapsed
+                scanned_all_size as f64 / elapsed
             } else {
                 0.0
             };
@@ -239,12 +236,13 @@ async fn perform_scan(
             let progress = ScanProgress {
                 scan_id: ctx.scan_id.clone(),
                 current_path: path_str.clone(),
-                scanned_files: total_files,
-                scanned_size: total_size,
-                percent,
+                scanned_files: scanned_all_files,
+                scanned_size: scanned_all_size,
+                total_files: categorized_files_count,
+                total_size: categorized_size,
+                percent: path_progress.min(99.0),
                 speed,
                 status: ScanStatus::Scanning,
-                ..ctx.progress.clone()
             };
 
             let _ = ctx.app.emit(EVENT_SCAN_PROGRESS, &progress);
@@ -254,8 +252,8 @@ async fn perform_scan(
     }
 
     result.end_time = chrono::Utc::now().timestamp_millis();
-    result.total_files = total_files;
-    result.total_size = total_size;
+    result.total_files = categorized_files_count;
+    result.total_size = categorized_size;
     result.duration = (result.end_time - result.start_time) as u64;
     result.status = ScanStatus::Completed;
 
