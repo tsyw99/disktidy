@@ -1,20 +1,18 @@
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use tauri::AppHandle;
 
 use crate::models::{
-    GarbageAnalysisResult, GarbageCategory,
-    LargeFile, LargeFileAnalysisResult, LargeFileAnalyzerOptions, LargeFileDetails,
-    DuplicateAnalysisResult, DuplicateDetectorOptions, DuplicateGroup,
+    DuplicateAnalysisResult, DuplicateDetectorOptions, DuplicateGroup, GarbageAnalysisResult,
+    GarbageCategory, LargeFile, LargeFileAnalysisResult, LargeFileAnalyzerOptions,
+    LargeFileDetails,
 };
 use crate::modules::file_analyzer::{
-    GarbageDetector, GarbageDetectorOptions,
-    LargeFileAnalyzer, LargeFileStats,
-    DuplicateDetector,
-    JunkFileDetector, JunkScanOptions, JunkScanResult, JunkFileType,
-    JunkFileScanProgress, start_junk_file_scan, pause_junk_file_scan,
-    resume_junk_file_scan, cancel_junk_file_scan, get_junk_file_scan_progress,
-    get_junk_file_scan_result, clear_junk_file_scan_result,
+    cancel_junk_file_scan, clear_junk_file_scan_result, get_junk_category_files,
+    get_junk_file_scan_progress, get_junk_file_scan_result, pause_junk_file_scan,
+    resume_junk_file_scan, start_junk_file_scan, DuplicateDetector, GarbageDetector,
+    GarbageDetectorOptions, JunkCategoryFilesResponse, JunkFileDetector, JunkFileScanProgress,
+    JunkFileType, JunkScanOptions, JunkScanResult, LargeFileAnalyzer, LargeFileStats,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,15 +27,17 @@ pub struct GarbageCategoryInfo {
 pub async fn analyze_garbage_files(
     options: Option<GarbageDetectorOptionsJson>,
 ) -> GarbageAnalysisResult {
-    let opts = options.map(|o| GarbageDetectorOptions {
-        include_system_temp: o.include_system_temp,
-        include_browser_cache: o.include_browser_cache,
-        include_app_cache: o.include_app_cache,
-        include_recycle_bin: o.include_recycle_bin,
-        include_log_files: o.include_log_files,
-        min_file_age_days: o.min_file_age_days,
-        max_files_per_category: o.max_files_per_category,
-    }).unwrap_or_default();
+    let opts = options
+        .map(|o| GarbageDetectorOptions {
+            include_system_temp: o.include_system_temp,
+            include_browser_cache: o.include_browser_cache,
+            include_app_cache: o.include_app_cache,
+            include_recycle_bin: o.include_recycle_bin,
+            include_log_files: o.include_log_files,
+            min_file_age_days: o.min_file_age_days,
+            max_files_per_category: o.max_files_per_category,
+        })
+        .unwrap_or_default();
 
     let detector = GarbageDetector::with_options(opts);
     detector.detect_all()
@@ -72,8 +72,8 @@ impl Default for GarbageDetectorOptionsJson {
 pub async fn analyze_garbage_by_category(
     category: String,
 ) -> Result<GarbageAnalysisResult, String> {
-    let parsed_category = parse_garbage_category(&category)
-        .map_err(|_| format!("Invalid category: {}", category))?;
+    let parsed_category =
+        parse_garbage_category(&category).map_err(|_| format!("Invalid category: {}", category))?;
 
     let detector = GarbageDetector::new();
     let files = match parsed_category {
@@ -87,15 +87,21 @@ pub async fn analyze_garbage_by_category(
 
     let total_files = files.len() as u64;
     let total_size = files.iter().map(|f| f.size).sum();
-    let high_risk_count = files.iter().filter(|f| f.risk_level >= crate::models::RiskLevel::High).count() as u64;
+    let high_risk_count = files
+        .iter()
+        .filter(|f| f.risk_level >= crate::models::RiskLevel::High)
+        .count() as u64;
 
     let mut categories = std::collections::HashMap::new();
-    categories.insert(category.clone(), crate::models::CategoryStats {
-        category: parsed_category.display_name().to_string(),
-        file_count: total_files,
-        total_size,
-        files,
-    });
+    categories.insert(
+        category.clone(),
+        crate::models::CategoryStats {
+            category: parsed_category.display_name().to_string(),
+            file_count: total_files,
+            total_size,
+            files,
+        },
+    );
 
     Ok(GarbageAnalysisResult {
         scan_id: uuid::Uuid::new_v4().to_string(),
@@ -161,12 +167,14 @@ pub async fn analyze_large_files(
     threshold: Option<u64>,
     options: Option<LargeFileAnalyzerOptionsJson>,
 ) -> LargeFileAnalysisResult {
-    let mut opts = options.map(|o| LargeFileAnalyzerOptions {
-        threshold: o.threshold,
-        exclude_paths: o.exclude_paths,
-        include_hidden: o.include_hidden,
-        include_system: o.include_system,
-    }).unwrap_or_default();
+    let mut opts = options
+        .map(|o| LargeFileAnalyzerOptions {
+            threshold: o.threshold,
+            exclude_paths: o.exclude_paths,
+            include_hidden: o.include_hidden,
+            include_system: o.include_system,
+        })
+        .unwrap_or_default();
 
     if let Some(t) = threshold {
         opts.threshold = t;
@@ -241,7 +249,9 @@ impl From<LargeFileStats> for LargeFileStatsJson {
             total_size: stats.total_size,
             average_size: stats.average_size,
             largest_file: stats.largest_file,
-            type_distribution: stats.type_distribution.into_values()
+            type_distribution: stats
+                .type_distribution
+                .into_values()
                 .map(|t| TypeStatsJson {
                     file_type: t.file_type,
                     count: t.count,
@@ -262,9 +272,7 @@ pub struct TypeStatsJson {
 }
 
 #[tauri::command]
-pub async fn get_large_file_details(
-    path: String,
-) -> Option<LargeFileDetails> {
+pub async fn get_large_file_details(path: String) -> Option<LargeFileDetails> {
     let analyzer = LargeFileAnalyzer::new();
     analyzer.get_file_details(PathBuf::from(&path).as_path())
 }
@@ -275,12 +283,14 @@ pub async fn find_duplicate_files(
     min_size: Option<u64>,
     options: Option<DuplicateDetectorOptionsJson>,
 ) -> DuplicateAnalysisResult {
-    let mut opts = options.map(|o| DuplicateDetectorOptions {
-        min_size: o.min_size,
-        max_size: o.max_size,
-        include_hidden: o.include_hidden,
-        use_cache: o.use_cache,
-    }).unwrap_or_default();
+    let mut opts = options
+        .map(|o| DuplicateDetectorOptions {
+            min_size: o.min_size,
+            max_size: o.max_size,
+            include_hidden: o.include_hidden,
+            use_cache: o.use_cache,
+        })
+        .unwrap_or_default();
 
     if let Some(size) = min_size {
         opts.min_size = size;
@@ -318,11 +328,9 @@ pub struct DuplicateSuggestions {
 }
 
 #[tauri::command]
-pub async fn get_duplicate_suggestions(
-    group: DuplicateGroup,
-) -> DuplicateSuggestions {
+pub async fn get_duplicate_suggestions(group: DuplicateGroup) -> DuplicateSuggestions {
     let detector = DuplicateDetector::new();
-    
+
     let files_to_delete = detector.suggest_files_to_delete(&group);
     let original = detector.suggest_original(&group);
 
@@ -333,24 +341,24 @@ pub async fn get_duplicate_suggestions(
 }
 
 #[tauri::command]
-pub async fn scan_junk_files(
-    options: Option<JunkScanOptionsJson>,
-) -> Vec<JunkScanResult> {
-    let opts = options.map(|o| JunkScanOptions {
-        scan_paths: o.scan_paths,
-        include_empty_folders: o.include_empty_folders,
-        include_invalid_shortcuts: o.include_invalid_shortcuts,
-        include_old_logs: o.include_old_logs,
-        include_old_installers: o.include_old_installers,
-        include_invalid_downloads: o.include_invalid_downloads,
-        include_small_files: o.include_small_files,
-        small_file_max_size: o.small_file_max_size,
-        log_max_age_days: o.log_max_age_days,
-        installer_max_age_days: o.installer_max_age_days,
-        exclude_paths: o.exclude_paths,
-        include_hidden: o.include_hidden,
-        include_system: o.include_system,
-    }).unwrap_or_default();
+pub async fn scan_junk_files(options: Option<JunkScanOptionsJson>) -> Vec<JunkScanResult> {
+    let opts = options
+        .map(|o| JunkScanOptions {
+            scan_paths: o.scan_paths,
+            include_empty_folders: o.include_empty_folders,
+            include_invalid_shortcuts: o.include_invalid_shortcuts,
+            include_old_logs: o.include_old_logs,
+            include_old_installers: o.include_old_installers,
+            include_invalid_downloads: o.include_invalid_downloads,
+            include_small_files: o.include_small_files,
+            small_file_max_size: o.small_file_max_size,
+            log_max_age_days: o.log_max_age_days,
+            installer_max_age_days: o.installer_max_age_days,
+            exclude_paths: o.exclude_paths,
+            include_hidden: o.include_hidden,
+            include_system: o.include_system,
+        })
+        .unwrap_or_default();
 
     let detector = JunkFileDetector::with_options(opts);
     detector.detect_all()
@@ -401,7 +409,7 @@ pub async fn scan_junk_by_type(
 ) -> Option<JunkScanResult> {
     let parsed_type = parse_junk_file_type(&file_type)?;
     let opts = options.unwrap_or_default();
-    
+
     let detector = JunkFileDetector::with_options(JunkScanOptions {
         scan_paths: opts.scan_paths,
         include_empty_folders: true,
@@ -538,3 +546,16 @@ pub async fn junk_file_scan_result(scan_id: String) -> Option<Vec<JunkScanResult
 pub async fn junk_file_scan_clear(scan_id: String) -> Result<(), String> {
     clear_junk_file_scan_result(&scan_id).await
 }
+
+#[tauri::command]
+pub async fn junk_file_category_files(
+    scan_id: String,
+    file_type: String,
+    offset: u64,
+    limit: u64,
+) -> Option<JunkCategoryFilesResponse> {
+    get_junk_category_files(&scan_id, &file_type, offset, limit).await
+}
+
+// 确保前端 camelCase 参数名能够正确映射
+// Tauri 会自动处理 scanId -> scan_id, fileType -> file_type 的转换

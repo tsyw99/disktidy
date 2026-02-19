@@ -1,14 +1,20 @@
-import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useMemo, useState, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import { 
-  CheckCircle2, FileText, FolderOpen, Trash2, RotateCcw, Inbox, 
-  ChevronRight, ExternalLink, CheckSquare, Square, HelpCircle
+  CheckCircle2, FileText, FolderOpen, Trash2, RotateCcw, Inbox,
+  ExternalLink, CheckSquare, Square
 } from 'lucide-react';
-import type { ScanResult, FileCategory, FileInfo } from '../../types';
+import type { ScanResult, FileInfo } from '../../types';
 import { formatBytes } from '../../utils/format';
 import { openFileLocation } from '../../utils/shell';
 import { scanService } from '../../services/scanService';
-import { CategoryHelpModal } from '../common';
+import { useScanStore } from '../../stores/scanStore';
+import { 
+  CategorizedFileList, 
+  CategoryHelpModal,
+  type BaseCategoryInfo,
+  type FileRowProps,
+} from '../common';
 
 interface ScanResultsProps {
   result: ScanResult | null;
@@ -26,32 +32,12 @@ interface ScanResultsProps {
   onCollapseAll: () => void;
 }
 
-function formatDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+interface ScanCategoryInfo extends BaseCategoryInfo<FileInfo> {
+  name: string;
+  description: string;
 }
 
-function FileRow({
-  file,
-  isSelected,
-  isLast,
-  onToggleSelection,
-}: {
-  file: FileInfo;
-  isSelected: boolean;
-  isLast: boolean;
-  onToggleSelection: () => void;
-}) {
-  const handleOpenLocation = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    await openFileLocation(file.path);
-  };
-
+function ScanFileRow({ file, isSelected, isLast, onToggleSelection, onOpenLocation }: FileRowProps<FileInfo>) {
   return (
     <div
       className={`flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-tertiary)] transition-colors cursor-pointer ${
@@ -79,225 +65,32 @@ function FileRow({
             {formatBytes(file.size)}
           </span>
           <span className="text-xs text-[var(--text-tertiary)]">
-            {formatDate(file.modified_time)}
+            {new Date(file.modified_time).toLocaleString('zh-CN', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
           </span>
         </div>
       </div>
       
-      <motion.button
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
-        onClick={handleOpenLocation}
-        className="flex-shrink-0 p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors"
-        title="打开文件所在位置"
-      >
-        <ExternalLink className="w-4 h-4" />
-      </motion.button>
-    </div>
-  );
-}
-
-interface CategoryFilesState {
-  files: FileInfo[];
-  total: number;
-  hasMore: boolean;
-  isLoading: boolean;
-}
-
-function CategoryItem({
-  category,
-  scanId,
-  isExpanded,
-  isSelected,
-  selectedFiles,
-  onToggleExpand,
-  onToggleSelection,
-  onToggleFileSelection,
-}: {
-  category: FileCategory;
-  scanId: string | null;
-  isExpanded: boolean;
-  isSelected: boolean;
-  selectedFiles: Set<string>;
-  onToggleExpand: () => void;
-  onToggleSelection: () => void;
-  onToggleFileSelection: (filePath: string) => void;
-}) {
-  const [filesState, setFilesState] = useState<CategoryFilesState>({
-    files: category.files,
-    total: category.file_count,
-    hasMore: category.has_more,
-    isLoading: false,
-  });
-  
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  const categoryRef = useRef<HTMLDivElement>(null);
-  const wasExpandedRef = useRef(false);
-  
-  const selectedInCategory = useMemo(() => {
-    return filesState.files.filter(f => selectedFiles.has(f.path)).length;
-  }, [filesState.files, selectedFiles]);
-
-  useEffect(() => {
-    if (isExpanded && !wasExpandedRef.current && categoryRef.current) {
-      categoryRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    wasExpandedRef.current = isExpanded;
-  }, [isExpanded]);
-
-  const loadMore = useCallback(async () => {
-    if (!scanId || filesState.isLoading || !filesState.hasMore) return;
-    
-    setFilesState(prev => ({ ...prev, isLoading: true }));
-    
-    try {
-      const response = await scanService.getCategoryFiles(
-        scanId,
-        category.name,
-        filesState.files.length,
-        50
-      );
-      
-      if (response) {
-        setFilesState(prev => ({
-          ...prev,
-          files: [...prev.files, ...response.files],
-          hasMore: response.has_more,
-          isLoading: false,
-        }));
-      }
-    } catch (e) {
-      setFilesState(prev => ({ ...prev, isLoading: false }));
-    }
-  }, [scanId, category.name, filesState.files.length, filesState.hasMore, filesState.isLoading]);
-
-  useEffect(() => {
-    if (!isExpanded || !filesState.hasMore || filesState.isLoading) return;
-    
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          loadMore();
-        }
-      },
-      { threshold: 0.1, rootMargin: '100px' }
-    );
-    
-    const currentRef = loadMoreRef.current;
-    if (currentRef) {
-      observer.observe(currentRef);
-    }
-    
-    return () => {
-      if (currentRef) {
-        observer.unobserve(currentRef);
-      }
-    };
-  }, [isExpanded, filesState.hasMore, filesState.isLoading, loadMore]);
-
-  useEffect(() => {
-    if (isExpanded && filesState.files.length === 0 && filesState.hasMore) {
-      loadMore();
-    }
-  }, [isExpanded]);
-
-  return (
-    <motion.div
-      ref={categoryRef}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className="rounded-lg border border-[var(--border-color)] overflow-hidden"
-    >
-      <div 
-        className="flex items-center gap-3 p-4 bg-[var(--bg-secondary)] cursor-pointer hover:bg-[var(--bg-tertiary)] transition-colors"
-        onClick={onToggleExpand}
-      >
-        <motion.div
-          animate={{ rotate: isExpanded ? 90 : 0 }}
-          transition={{ duration: 0.2 }}
-        >
-          <ChevronRight className="w-4 h-4 text-[var(--text-tertiary)]" />
-        </motion.div>
-        
-        <button
+      {onOpenLocation && (
+        <motion.button
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
           onClick={(e) => {
             e.stopPropagation();
-            onToggleSelection();
+            onOpenLocation(file);
           }}
-          className="flex-shrink-0"
+          className="flex-shrink-0 p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors"
+          title="打开文件所在位置"
         >
-          {isSelected ? (
-            <CheckSquare className="w-5 h-5 text-[var(--color-primary)]" />
-          ) : selectedInCategory > 0 ? (
-            <div className="w-5 h-5 rounded border-2 border-[var(--color-primary)] bg-[var(--color-primary)]/20 flex items-center justify-center">
-              <div className="w-2 h-2 rounded-sm bg-[var(--color-primary)]" />
-            </div>
-          ) : (
-            <Square className="w-5 h-5 text-[var(--text-tertiary)]" />
-          )}
-        </button>
-        
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-[var(--text-primary)]">
-              {category.display_name}
-            </span>
-            <span className="text-xs text-[var(--text-tertiary)]">
-              ({filesState.total} 个文件)
-            </span>
-          </div>
-          {selectedInCategory > 0 && (
-            <p className="text-xs text-[var(--color-primary)] mt-0.5">
-              已选择 {selectedInCategory} 个文件
-            </p>
-          )}
-        </div>
-        
-        <span className="text-sm font-medium text-[#10b981]">
-          {formatBytes(category.total_size)}
-        </span>
-      </div>
-      
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            {filesState.files.length > 0 ? (
-              <div className="max-h-[300px] overflow-y-auto scrollbar-thin">
-                {filesState.files.map((file, index) => {
-                  const isLast = index === filesState.files.length - 1 && !filesState.hasMore;
-                  return (
-                    <FileRow
-                      key={file.path}
-                      file={file}
-                      isSelected={selectedFiles.has(file.path)}
-                      isLast={isLast}
-                      onToggleSelection={() => onToggleFileSelection(file.path)}
-                    />
-                  );
-                })}
-                {filesState.hasMore && (
-                  <div 
-                    ref={loadMoreRef}
-                    className="h-1"
-                  />
-                )}
-              </div>
-            ) : (
-              <div className="p-4 text-center text-sm text-[var(--text-tertiary)]">
-                暂无文件
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+          <ExternalLink className="w-4 h-4" />
+        </motion.button>
+      )}
+    </div>
   );
 }
 
@@ -324,20 +117,7 @@ export default function ScanResults({
 
   const hasFiles = result.total_files > 0;
   const selectedCount = selectedFiles.size;
-  const totalFiles = result.total_files;
-  const allSelected = selectedCount === totalFiles && totalFiles > 0;
-
-  const selectedSize = useMemo(() => {
-    let size = 0;
-    for (const category of result.categories) {
-      for (const file of category.files) {
-        if (selectedFiles.has(file.path)) {
-          size += file.size;
-        }
-      }
-    }
-    return size;
-  }, [result.categories, selectedFiles]);
+  const selectedSize = useScanStore((state) => state.actions.getSelectedSize());
 
   const categoryInfoList = useMemo(() => {
     return result.categories.map(cat => ({
@@ -346,6 +126,57 @@ export default function ScanResults({
       description: cat.description || '',
     }));
   }, [result.categories]);
+
+  const categories: ScanCategoryInfo[] = useMemo(() => {
+    return result.categories.map(cat => ({
+      key: cat.name,
+      name: cat.name,
+      displayName: cat.display_name,
+      description: cat.description,
+      files: cat.files,
+      fileCount: cat.file_count,
+      totalSize: cat.total_size,
+      hasMore: cat.has_more,
+    }));
+  }, [result.categories]);
+
+  const handleLoadMore = useCallback(async (
+    categoryKey: string, 
+    offset: number, 
+    limit: number
+  ) => {
+    if (!scanId) return null;
+    
+    try {
+      const response = await scanService.getCategoryFiles(scanId, categoryKey, offset, limit);
+      if (response) {
+        return {
+          files: response.files,
+          hasMore: response.has_more,
+        };
+      }
+    } catch {
+      // 静默处理错误
+    }
+    return null;
+  }, [scanId]);
+
+  const handleOpenLocation = useCallback(async (file: FileInfo) => {
+    await openFileLocation(file.path);
+  }, []);
+
+  const renderFileRow = useCallback((props: FileRowProps<FileInfo>) => {
+    return (
+      <ScanFileRow
+        key={props.file.path}
+        file={props.file}
+        isSelected={props.isSelected}
+        isLast={props.isLast}
+        onToggleSelection={props.onToggleSelection}
+        onOpenLocation={props.onOpenLocation}
+      />
+    );
+  }, []);
 
   if (!hasFiles) {
     return (
@@ -481,101 +312,30 @@ export default function ScanResults({
       </div>
 
       {result.categories && result.categories.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="mt-6"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm font-medium text-[var(--text-primary)]">文件分类</h4>
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setHelpModalVisible(true)}
-                className="p-1 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-colors"
-                title="查看分类说明"
-              >
-                <HelpCircle className="w-4 h-4" />
-              </motion.button>
-            </div>
-            <div className="flex items-center gap-2">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={onExpandAll}
-                className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-              >
-                全部展开
-              </motion.button>
-              <span className="text-[var(--text-tertiary)]">|</span>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={onCollapseAll}
-                className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-              >
-                全部折叠
-              </motion.button>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between p-3 rounded-lg bg-[var(--bg-secondary)] mb-3">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => {
-                  if (allSelected) {
-                    onDeselectAll();
-                  } else {
-                    onSelectAll();
-                  }
-                }}
-                className="flex items-center gap-2"
-              >
-                {allSelected ? (
-                  <CheckSquare className="w-5 h-5 text-[var(--color-primary)]" />
-                ) : selectedCount > 0 ? (
-                  <div className="w-5 h-5 rounded border-2 border-[var(--color-primary)] bg-[var(--color-primary)]/20 flex items-center justify-center">
-                    <div className="w-2 h-2 rounded-sm bg-[var(--color-primary)]" />
-                  </div>
-                ) : (
-                  <Square className="w-5 h-5 text-[var(--text-tertiary)]" />
-                )}
-                <span className="text-sm text-[var(--text-primary)]">
-                  {allSelected ? '取消全选' : '全选'}
-                </span>
-              </button>
-            </div>
-            
-            {selectedCount > 0 && (
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-[var(--text-secondary)]">
-                  已选择 <span className="font-medium text-[var(--text-primary)]">{selectedCount}</span> 个文件
-                </span>
-                <span className="text-sm font-medium text-[#10b981]">
-                  {formatBytes(selectedSize)}
-                </span>
-              </div>
-            )}
-          </div>
-          
-          <div className="space-y-2">
-            {result.categories.map((category) => (
-              <CategoryItem
-                key={category.name}
-                category={category}
-                scanId={scanId}
-                isExpanded={expandedCategories.has(category.name)}
-                isSelected={category.files.every(f => selectedFiles.has(f.path))}
-                selectedFiles={selectedFiles}
-                onToggleExpand={() => onToggleCategoryExpand(category.name)}
-                onToggleSelection={() => onToggleCategorySelection(category.name)}
-                onToggleFileSelection={onToggleFileSelection}
-              />
-            ))}
-          </div>
-        </motion.div>
+        <CategorizedFileList<FileInfo, ScanCategoryInfo>
+          categories={categories}
+          selectedFiles={selectedFiles}
+          expandedCategories={expandedCategories}
+          getCategoryKey={(c) => c.key}
+          getFileKey={(f) => f.path}
+          onToggleFileSelection={onToggleFileSelection}
+          onToggleCategorySelection={onToggleCategorySelection}
+          onToggleCategoryExpand={onToggleCategoryExpand}
+          onSelectAll={onSelectAll}
+          onDeselectAll={onDeselectAll}
+          onExpandAll={onExpandAll}
+          onCollapseAll={onCollapseAll}
+          onLoadMore={handleLoadMore}
+          onOpenLocation={handleOpenLocation}
+          totalCount={result.total_files}
+          totalSize={result.total_size}
+          selectedCount={selectedCount}
+          selectedSize={selectedSize}
+          renderFileRow={renderFileRow}
+          title="文件分类"
+          showHelpButton
+          onHelpClick={() => setHelpModalVisible(true)}
+        />
       )}
 
       <motion.div

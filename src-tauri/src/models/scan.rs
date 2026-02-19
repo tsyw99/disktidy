@@ -38,6 +38,7 @@ pub enum ScanStatus {
     Scanning,
     Paused,
     Completed,
+    Cancelled,
     Error,
 }
 

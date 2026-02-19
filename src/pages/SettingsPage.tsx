@@ -3,6 +3,7 @@ import { Settings, Sun, Moon, Monitor, HardDrive, Trash2, Shield, Bell, FolderX,
 import { open } from '@tauri-apps/plugin-dialog';
 import { useUIStore, useSettingsStore, useSettingsActions } from '../stores';
 import { Modal } from '../components/common';
+import { APP_VERSION } from '../utils/constants';
 
 function SettingsPage() {
   const theme = useUIStore((state) => state.theme);
@@ -135,9 +136,9 @@ function SettingsPage() {
           </h2>
           <div className="space-y-4">
             <div className="space-y-2 text-sm text-[var(--text-secondary)]">
-              <p className="text-lg font-semibold text-[var(--text-primary)]">DiskTidy v1.6.0 测试版</p>
+              <p className="text-lg font-semibold text-[var(--text-primary)]">DiskTidy v{APP_VERSION}</p>
               <p>Windows 磁盘清理工具</p>
-              <p className="text-[var(--text-tertiary)]">使用 Tauri + React 构建</p>
+              <p className="text-[var(--text-tertiary)]">使用 React + Rust 构建</p>
               <p className="text-[var(--text-tertiary)] text-xs">感谢 Magic UI 和 React Bits</p>
             </div>
 
@@ -447,6 +448,19 @@ function SettingsPage() {
                 <span>本应用已内置系统目录保护，但仍请谨慎操作</span>
               </li>
             </ul>
+          </div>
+
+          <div className="space-y-3 text-sm text-[var(--text-secondary)]">
+            <h4 className="font-medium text-[var(--text-primary)]">应用数据存储位置</h4>
+            <div className="space-y-1.5 text-xs font-mono bg-[var(--bg-secondary)] p-3 rounded-lg">
+              <p className="text-[var(--text-tertiary)]">• C:\Users\&lt;用户名&gt;\AppData\Roaming\DiskTidy\settings.json</p>
+              <p className="text-[var(--text-tertiary)]">• C:\Users\&lt;用户名&gt;\AppData\Local\DiskTidy\app_paths.json</p>
+              <p className="text-[var(--text-tertiary)]">• C:\Users\&lt;用户名&gt;\AppData\Local\DiskTidy\app_cache_scan.json</p>
+            </div>
+            <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              非必要请勿手动修改以上文件，否则可能导致应用异常
+            </p>
           </div>
 
           <div className="pt-3 border-t border-[var(--border-color)]">

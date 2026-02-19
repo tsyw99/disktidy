@@ -51,13 +51,19 @@ pub async fn start_classify_files(
     path: String,
     options: Option<FileClassificationOptions>,
 ) -> FileClassificationResult {
-    // Reset cancel flag before starting
+    log::info!("[start_classify_files] Received path: {}", path);
+    
     CANCEL_FLAG.store(false, Ordering::SeqCst);
     
     let opts = options.unwrap_or_default();
+    log::info!("[start_classify_files] Options: max_depth={:?}, max_files={:?}", opts.max_depth, opts.max_files);
+    
     let classifier = CancellableFileClassifier::with_options_and_flag(opts, Arc::clone(&CANCEL_FLAG));
     
-    classifier.classify(&path)
+    let result = classifier.classify(&path);
+    log::info!("[start_classify_files] Result path: {}, total_files: {}", result.path, result.total_files);
+    
+    result
 }
 
 #[tauri::command]

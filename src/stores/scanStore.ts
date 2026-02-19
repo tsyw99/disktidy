@@ -139,43 +139,7 @@ export const useScanStore = create<ScanState>()(
         },
 
         startScan: async () => {
-          const { scanMode, selectedDisk, selectedScanPath, progressListener, completeListener, isListenersSetup } = get();
-          
-          if (!isListenersSetup) {
-            if (progressListener) {
-              progressListener();
-            }
-            if (completeListener) {
-              completeListener();
-            }
-
-            const unlistenProgress = await scanService.onProgress((progress) => {
-              const currentScanId = get().scanId;
-              if (!currentScanId || progress.scan_id === currentScanId) {
-                const progressStatus = progress.status;
-                if (progressStatus === 'idle') {
-                  return;
-                }
-                set({ progress, status: progressStatus });
-              }
-            });
-
-            const unlistenComplete = await scanService.onComplete((result) => {
-              const currentScanId = get().scanId;
-              if (!currentScanId || result.scan_id === currentScanId) {
-                set({ 
-                  result, 
-                  status: 'completed', 
-                });
-              }
-            });
-
-            set({ 
-              progressListener: unlistenProgress,
-              completeListener: unlistenComplete,
-              isListenersSetup: true,
-            });
-          }
+          const { scanMode, selectedDisk, selectedScanPath } = get();
 
           const initialProgress: ScanProgress = {
             scan_id: '',
@@ -219,7 +183,7 @@ export const useScanStore = create<ScanState>()(
               scanPaths = selectedScanPath ? [selectedScanPath] : [selectedDisk];
               options = {
                 ...defaultScanOptions,
-                mode: 'deep',
+                mode: 'full',
                 include_hidden: scanSettings.includeHidden,
                 include_system: scanSettings.includeSystem,
                 exclude_paths: scanSettings.excludePaths,

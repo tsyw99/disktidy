@@ -65,10 +65,10 @@ export default function ScanModeSelector({ disabled = false }: ScanModeSelectorP
       </button>
       <button
         ref={deepBtnRef}
-        onClick={() => handleModeChange('deep')}
+        onClick={() => handleModeChange('full')}
         disabled={disabled}
         className={`relative z-10 flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
-          scanMode === 'deep'
+          scanMode === 'full'
             ? 'text-white'
             : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
         } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}

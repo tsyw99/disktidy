@@ -7,6 +7,8 @@ export { appCacheService } from './appCacheService';
 export { fileClassifierService } from './fileClassifierService';
 export { largeFileService } from './largeFileService';
 export { junkFileScanService } from './junkFileScanService';
+export { softwareResidueService } from './softwareResidueService';
+export { driverService } from './driverService';
 export {
   optimizedFileClassifier,
   ClassificationValidator,

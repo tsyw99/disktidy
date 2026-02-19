@@ -3,7 +3,7 @@
  * 整合大文件管理和零碎文件扫描功能
  */
 
-import { useEffect, useState, useMemo, memo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   HardDrive,
@@ -23,7 +23,6 @@ import {
   RotateCcw,
   Sparkles,
   FolderOpen,
-  ChevronRight,
   FileX,
   FolderX,
   Link2Off,
@@ -33,13 +32,17 @@ import {
   CheckCircle2,
   ExternalLink,
 } from 'lucide-react';
-import { ProgressBar, SegmentedControl } from '../components/common';
+import { ProgressBar, SegmentedControl, CategorizedFileList } from '../components/common';
+import type { BaseCategoryInfo, BaseFileInfo, FileRowProps } from '../components/common';
 import { useLargeFileStore, useJunkFileStore } from '../stores';
 import { useSystemStore } from '../stores/systemStore';
+import { useSelectedSize, useSelectedSizeFromResults } from '../hooks';
 import { formatBytes, formatDate } from '../utils/format';
 import { openFileLocation } from '../utils/shell';
+import { fileAnalyzerService } from '../services/fileAnalyzerService';
+import { FILE_EXTENSION_GROUPS, FILE_TYPE_COLORS } from '../utils/constants';
 import type { LargeFile, LargeFileFilter } from '../types/largeFile';
-import type { JunkScanResult, JunkFileType, JunkFileItem } from '../types/fileAnalyzer';
+import type { JunkScanResult, JunkFileType } from '../types/fileAnalyzer';
 
 type AnalysisMode = 'largeFile' | 'junkFile';
 
@@ -55,28 +58,29 @@ const junkFileTypeConfig: Record<JunkFileType, { name: string; icon: React.React
 
 const LargeFileIcon = ({ extension }: { extension: string }) => {
   const ext = extension.toLowerCase();
-  if (['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm'].includes(ext)) {
-    return <FileText className="w-5 h-5 text-purple-400" />;
+  
+  if (FILE_EXTENSION_GROUPS.video.includes(ext as typeof FILE_EXTENSION_GROUPS.video[number])) {
+    return <FileText className={`w-5 h-5 ${FILE_TYPE_COLORS.video}`} />;
   }
-  if (['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2'].includes(ext)) {
-    return <Package className="w-5 h-5 text-yellow-400" />;
+  if (FILE_EXTENSION_GROUPS.archive.includes(ext as typeof FILE_EXTENSION_GROUPS.archive[number])) {
+    return <Package className={`w-5 h-5 ${FILE_TYPE_COLORS.archive}`} />;
   }
-  if (['.iso', '.img'].includes(ext)) {
-    return <Database className="w-5 h-5 text-orange-400" />;
+  if (FILE_EXTENSION_GROUPS.diskImage.includes(ext as typeof FILE_EXTENSION_GROUPS.diskImage[number])) {
+    return <Database className={`w-5 h-5 ${FILE_TYPE_COLORS.diskImage}`} />;
   }
-  if (['.exe', '.msi', '.pkg', '.deb', '.rpm'].includes(ext)) {
-    return <Package className="w-5 h-5 text-green-400" />;
+  if (FILE_EXTENSION_GROUPS.executable.includes(ext as typeof FILE_EXTENSION_GROUPS.executable[number])) {
+    return <Package className={`w-5 h-5 ${FILE_TYPE_COLORS.executable}`} />;
   }
-  if (['.mp3', '.wav', '.flac', '.aac', '.ogg'].includes(ext)) {
-    return <FileText className="w-5 h-5 text-pink-400" />;
+  if (FILE_EXTENSION_GROUPS.audio.includes(ext as typeof FILE_EXTENSION_GROUPS.audio[number])) {
+    return <FileText className={`w-5 h-5 ${FILE_TYPE_COLORS.audio}`} />;
   }
-  if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'].includes(ext)) {
-    return <FileText className="w-5 h-5 text-cyan-400" />;
+  if (FILE_EXTENSION_GROUPS.image.includes(ext as typeof FILE_EXTENSION_GROUPS.image[number])) {
+    return <FileText className={`w-5 h-5 ${FILE_TYPE_COLORS.image}`} />;
   }
-  if (['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'].includes(ext)) {
-    return <FileText className="w-5 h-5 text-blue-400" />;
+  if (FILE_EXTENSION_GROUPS.document.includes(ext as typeof FILE_EXTENSION_GROUPS.document[number])) {
+    return <FileText className={`w-5 h-5 ${FILE_TYPE_COLORS.document}`} />;
   }
-  return <FileText className="w-5 h-5 text-gray-400" />;
+  return <FileText className={`w-5 h-5 ${FILE_TYPE_COLORS.default}`} />;
 };
 
 const DiskSelector = ({
@@ -411,6 +415,10 @@ const JunkFileScanProgress = ({
   const percent = progress?.percent ?? 0;
   const scannedSize = progress?.scannedSize ?? 0;
   const speed = progress?.speed ?? 0;
+  const scannedFiles = progress?.scannedFiles ?? 0;
+  const foundFiles = progress?.foundFiles ?? 0;
+  const currentPath = progress?.currentPath ?? '';
+  const currentPhase = progress?.currentPhase ?? '';
 
   return (
     <div className="space-y-6">
@@ -425,7 +433,7 @@ const JunkFileScanProgress = ({
               </span>
             )}
           </div>
-          <span className="text-sm text-[var(--text-secondary)]">{formatBytes(scannedSize)}</span>
+          <span className="text-sm text-[var(--text-secondary)]">{percent.toFixed(0)}%</span>
         </div>
 
         <div className="relative">
@@ -450,10 +458,12 @@ const JunkFileScanProgress = ({
           className="text-center"
         >
           <div className="flex items-center justify-center gap-2 mb-2">
-            <HardDrive className="w-5 h-5 text-[var(--text-secondary)]" />
+            <FileText className="w-5 h-5 text-[var(--text-secondary)]" />
           </div>
-          <p className="text-2xl font-semibold text-[var(--text-primary)]">{formatBytes(scannedSize)}</p>
-          <p className="text-sm text-[var(--text-tertiary)]">已扫描</p>
+          <p className="text-2xl font-semibold text-[var(--text-primary)]">
+            {scannedFiles.toLocaleString()}
+          </p>
+          <p className="text-sm text-[var(--text-tertiary)]">已扫描文件</p>
         </motion.div>
 
         <motion.div
@@ -463,12 +473,10 @@ const JunkFileScanProgress = ({
           className="text-center"
         >
           <div className="flex items-center justify-center gap-2 mb-2">
-            <FileText className="w-5 h-5 text-[var(--text-secondary)]" />
+            <HardDrive className="w-5 h-5 text-[var(--text-secondary)]" />
           </div>
-          <p className="text-2xl font-semibold text-[var(--text-primary)]">
-            {(progress?.scannedFiles ?? 0).toLocaleString()}
-          </p>
-          <p className="text-sm text-[var(--text-tertiary)]">已扫描文件</p>
+          <p className="text-2xl font-semibold text-[var(--text-primary)]">{formatBytes(scannedSize)}</p>
+          <p className="text-sm text-[var(--text-tertiary)]">已扫描大小</p>
         </motion.div>
 
         <motion.div
@@ -481,23 +489,23 @@ const JunkFileScanProgress = ({
             <FileX className="w-5 h-5 text-[var(--text-secondary)]" />
           </div>
           <p className="text-2xl font-semibold text-[var(--text-primary)]">
-            {(progress?.foundFiles ?? 0).toLocaleString()}
+            {foundFiles.toLocaleString()}
           </p>
           <p className="text-sm text-[var(--text-tertiary)]">发现零碎文件</p>
         </motion.div>
       </div>
 
-      {progress?.currentPath && isScanning && (
+      {currentPath && isScanning && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="text-center"
         >
           <p className="text-xs text-[var(--text-tertiary)] mb-1">
-            {progress.currentPhase || '正在扫描'}
+            {currentPhase || '正在扫描'}
           </p>
           <p className="text-sm text-[var(--text-secondary)] truncate font-mono max-w-md mx-auto">
-            {progress.currentPath}
+            {currentPath}
           </p>
         </motion.div>
       )}
@@ -594,15 +602,7 @@ const LargeFileList = ({
 }) => {
   const allSelected = files.length > 0 && files.every((f) => selectedFiles.has(f.path));
   const selectedCount = selectedFiles.size;
-  const selectedSize = useMemo(() => {
-    let size = 0;
-    for (const file of files) {
-      if (selectedFiles.has(file.path)) {
-        size += file.size;
-      }
-    }
-    return size;
-  }, [files, selectedFiles]);
+  const selectedSize = useSelectedSize(files, selectedFiles);
 
   return (
     <motion.div
@@ -766,22 +766,18 @@ const LargeFileList = ({
   );
 };
 
-function JunkFileRow({
-  item,
-  isSelected,
-  isLast,
-  onToggleSelection,
-}: {
-  item: JunkFileItem;
-  isSelected: boolean;
-  isLast: boolean;
-  onToggleSelection: () => void;
-}) {
-  const handleOpenLocation = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    await openFileLocation(item.path);
-  };
+interface JunkFileInfo extends BaseFileInfo {
+  file_type: JunkFileType;
+  description: string;
+  safe_to_delete: boolean;
+  risk_level: string;
+}
 
+interface JunkCategoryInfo extends BaseCategoryInfo<JunkFileInfo> {
+  fileType: JunkFileType;
+}
+
+function JunkFileRow({ file, isSelected, isLast, onToggleSelection, onOpenLocation }: FileRowProps<JunkFileInfo>) {
   return (
     <div
       className={`flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-tertiary)] transition-colors cursor-pointer ${
@@ -798,149 +794,40 @@ function JunkFileRow({
       </button>
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-[var(--text-primary)] truncate" title={item.path.split(/[/\\]/).pop() ?? item.path}>
-          {item.path.split(/[/\\]/).pop() ?? item.path}
+        <p className="text-sm text-[var(--text-primary)] truncate" title={file.path.split(/[/\\]/).pop() ?? file.path}>
+          {file.path.split(/[/\\]/).pop() ?? file.path}
         </p>
-        <p className="text-xs text-[var(--text-tertiary)] truncate" title={item.path}>
-          {item.path}
+        <p className="text-xs text-[var(--text-tertiary)] truncate" title={file.path}>
+          {file.path}
         </p>
         <div className="flex items-center gap-3 mt-1">
           <span className="text-xs text-[var(--text-tertiary)]">
-            {formatBytes(item.size)}
+            {formatBytes(file.size)}
           </span>
         </div>
       </div>
 
-      <motion.button
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
-        onClick={handleOpenLocation}
-        className="flex-shrink-0 p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors"
-        title="打开文件所在位置"
-      >
-        <ExternalLink className="w-4 h-4" />
-      </motion.button>
+      {onOpenLocation && (
+        <motion.button
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenLocation(file);
+          }}
+          className="flex-shrink-0 p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors"
+          title="打开文件所在位置"
+        >
+          <ExternalLink className="w-4 h-4" />
+        </motion.button>
+      )}
     </div>
   );
 }
 
-const CategoryItem = memo(function CategoryItem({
-  result,
-  isExpanded,
-  selectedFiles,
-  onToggleExpand,
-  onToggleTypeSelection,
-  onToggleFileSelection,
-}: {
-  result: JunkScanResult;
-  isExpanded: boolean;
-  selectedFiles: Set<string>;
-  onToggleExpand: () => void;
-  onToggleTypeSelection: () => void;
-  onToggleFileSelection: (filePath: string) => void;
-}) {
-  const config = junkFileTypeConfig[result.file_type] || { name: result.file_type, icon: <FileX className="w-5 h-5" />, color: 'text-gray-400' };
-  const selectedInCategory = useMemo(() => {
-    return result.items.filter(item => selectedFiles.has(item.path)).length;
-  }, [result.items, selectedFiles]);
-  const allTypeSelected = result.items.length > 0 && result.items.every(item => selectedFiles.has(item.path));
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className="rounded-lg border border-[var(--border-color)] overflow-hidden"
-    >
-      <div
-        className="flex items-center gap-3 p-4 bg-[var(--bg-secondary)] cursor-pointer hover:bg-[var(--bg-tertiary)] transition-colors"
-        onClick={onToggleExpand}
-      >
-        <motion.div
-          animate={{ rotate: isExpanded ? 90 : 0 }}
-          transition={{ duration: 0.2 }}
-        >
-          <ChevronRight className="w-4 h-4 text-[var(--text-tertiary)]" />
-        </motion.div>
-
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleTypeSelection();
-          }}
-          className="flex-shrink-0"
-        >
-          {allTypeSelected ? (
-            <CheckSquare className="w-5 h-5 text-[var(--color-primary)]" />
-          ) : selectedInCategory > 0 ? (
-            <div className="w-5 h-5 rounded border-2 border-[var(--color-primary)] bg-[var(--color-primary)]/20 flex items-center justify-center">
-              <div className="w-2 h-2 rounded-sm bg-[var(--color-primary)]" />
-            </div>
-          ) : (
-            <Square className="w-5 h-5 text-[var(--text-tertiary)]" />
-          )}
-        </button>
-
-        <div className={`w-10 h-10 rounded-lg bg-[var(--bg-tertiary)] flex items-center justify-center ${config.color}`}>
-          {config.icon}
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-[var(--text-primary)]">
-              {config.name}
-            </span>
-            <span className="text-xs text-[var(--text-tertiary)]">
-              ({result.count} 个文件)
-            </span>
-          </div>
-          {selectedInCategory > 0 && (
-            <p className="text-xs text-[var(--color-primary)] mt-0.5">
-              已选择 {selectedInCategory} 个文件
-            </p>
-          )}
-        </div>
-
-        <span className="text-sm font-medium text-[#10b981]">
-          {formatBytes(result.total_size)}
-        </span>
-      </div>
-
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            {result.items.length > 0 ? (
-              <div className="max-h-[300px] overflow-y-auto scrollbar-thin">
-                {result.items.map((item, index) => (
-                  <JunkFileRow
-                    key={item.path}
-                    item={item}
-                    isSelected={selectedFiles.has(item.path)}
-                    isLast={index === result.items.length - 1}
-                    onToggleSelection={() => onToggleFileSelection(item.path)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="p-4 text-center text-sm text-[var(--text-tertiary)]">
-                暂无文件
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
-  );
-});
-
 const JunkFileList = ({
   results,
+  scanId,
   selectedFiles,
   expandedTypes,
   onToggleSelection,
@@ -953,6 +840,7 @@ const JunkFileList = ({
   onDelete,
 }: {
   results: JunkScanResult[];
+  scanId: string | null;
   selectedFiles: Set<string>;
   expandedTypes: Set<string>;
   onToggleSelection: (path: string) => void;
@@ -967,19 +855,95 @@ const JunkFileList = ({
   const totalCount = results.reduce((sum, r) => sum + r.count, 0);
   const totalSize = results.reduce((sum, r) => sum + r.total_size, 0);
   const selectedCount = selectedFiles.size;
-  const selectedSize = useMemo(() => {
-    let size = 0;
-    results.forEach(result => {
-      result.items.forEach(item => {
-        if (selectedFiles.has(item.path)) {
-          size += item.size;
-        }
-      });
-    });
-    return size;
-  }, [results, selectedFiles]);
+  const selectedSize = useSelectedSizeFromResults(results, selectedFiles);
 
-  const allSelected = totalCount > 0 && selectedCount === totalCount;
+  const categories: JunkCategoryInfo[] = useMemo(() => {
+    return results.map(result => {
+      const config = junkFileTypeConfig[result.file_type] || { 
+        name: result.file_type, 
+        icon: <FileX className="w-5 h-5" />, 
+        color: 'text-gray-400' 
+      };
+      
+      const files: JunkFileInfo[] = result.items.map(item => ({
+        path: item.path,
+        name: item.path.split(/[/\\]/).pop() ?? item.path,
+        size: item.size,
+        modified_time: item.modified_time,
+        file_type: item.file_type,
+        description: item.description,
+        safe_to_delete: item.safe_to_delete,
+        risk_level: item.risk_level,
+      }));
+      
+      return {
+        key: result.file_type,
+        fileType: result.file_type,
+        displayName: config.name,
+        files,
+        fileCount: result.count,
+        totalSize: result.total_size,
+        hasMore: result.count > result.items.length,
+        icon: config.icon,
+        iconColor: config.color,
+      };
+    });
+  }, [results]);
+
+  const handleOpenLocation = useCallback(async (file: JunkFileInfo) => {
+    await openFileLocation(file.path);
+  }, []);
+
+  const handleLoadMore = useCallback(async (
+    categoryKey: string,
+    offset: number,
+    limit: number
+  ) => {
+    if (!scanId) return null;
+    
+    try {
+      const response = await fileAnalyzerService.getJunkCategoryFiles(
+        scanId,
+        categoryKey,
+        offset,
+        limit
+      );
+      
+      if (response) {
+        const files: JunkFileInfo[] = response.files.map(item => ({
+          path: item.path,
+          name: item.path.split(/[/\\]/).pop() ?? item.path,
+          size: item.size,
+          modified_time: item.modified_time,
+          file_type: item.file_type,
+          description: item.description,
+          safe_to_delete: item.safe_to_delete,
+          risk_level: item.risk_level,
+        }));
+        
+        return {
+          files,
+          hasMore: response.has_more,
+        };
+      }
+    } catch {
+      // 静默处理错误
+    }
+    return null;
+  }, [scanId]);
+
+  const renderFileRow = useCallback((props: FileRowProps<JunkFileInfo>) => {
+    return (
+      <JunkFileRow
+        key={props.file.path}
+        file={props.file}
+        isSelected={props.isSelected}
+        isLast={props.isLast}
+        onToggleSelection={props.onToggleSelection}
+        onOpenLocation={props.onOpenLocation}
+      />
+    );
+  }, []);
 
   return (
     <motion.div
@@ -1061,88 +1025,28 @@ const JunkFileList = ({
       </div>
 
       {results.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="mt-6"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-[var(--text-primary)]">文件分类</h4>
-            <div className="flex items-center gap-2">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={onExpandAll}
-                className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-              >
-                全部展开
-              </motion.button>
-              <span className="text-[var(--text-tertiary)]">|</span>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={onCollapseAll}
-                className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-              >
-                全部折叠
-              </motion.button>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between p-3 rounded-lg bg-[var(--bg-secondary)] mb-3">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => {
-                  if (allSelected) {
-                    onDeselectAll();
-                  } else {
-                    onSelectAll();
-                  }
-                }}
-                className="flex items-center gap-2"
-              >
-                {allSelected ? (
-                  <CheckSquare className="w-5 h-5 text-[var(--color-primary)]" />
-                ) : selectedCount > 0 ? (
-                  <div className="w-5 h-5 rounded border-2 border-[var(--color-primary)] bg-[var(--color-primary)]/20 flex items-center justify-center">
-                    <div className="w-2 h-2 rounded-sm bg-[var(--color-primary)]" />
-                  </div>
-                ) : (
-                  <Square className="w-5 h-5 text-[var(--text-tertiary)]" />
-                )}
-                <span className="text-sm text-[var(--text-primary)]">
-                  {allSelected ? '取消全选' : '全选'}
-                </span>
-              </button>
-            </div>
-
-            {selectedCount > 0 && (
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-[var(--text-secondary)]">
-                  已选择 <span className="font-medium text-[var(--text-primary)]">{selectedCount}</span> 个文件
-                </span>
-                <span className="text-sm font-medium text-[#10b981]">
-                  {formatBytes(selectedSize)}
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            {results.map((result) => (
-              <CategoryItem
-                key={result.file_type}
-                result={result}
-                isExpanded={expandedTypes.has(result.file_type)}
-                selectedFiles={selectedFiles}
-                onToggleExpand={() => onToggleExpand(result.file_type)}
-                onToggleTypeSelection={() => onToggleTypeSelection(result.file_type)}
-                onToggleFileSelection={onToggleSelection}
-              />
-            ))}
-          </div>
-        </motion.div>
+        <CategorizedFileList<JunkFileInfo, JunkCategoryInfo>
+          categories={categories}
+          selectedFiles={selectedFiles}
+          expandedCategories={expandedTypes}
+          getCategoryKey={(c) => c.key}
+          getFileKey={(f) => f.path}
+          onToggleFileSelection={onToggleSelection}
+          onToggleCategorySelection={onToggleTypeSelection}
+          onToggleCategoryExpand={onToggleExpand}
+          onSelectAll={onSelectAll}
+          onDeselectAll={onDeselectAll}
+          onExpandAll={onExpandAll}
+          onCollapseAll={onCollapseAll}
+          onLoadMore={handleLoadMore}
+          onOpenLocation={handleOpenLocation}
+          totalCount={totalCount}
+          totalSize={totalSize}
+          selectedCount={selectedCount}
+          selectedSize={selectedSize}
+          renderFileRow={renderFileRow}
+          title="文件分类"
+        />
       )}
 
       <motion.div
@@ -1259,7 +1163,9 @@ export default function FileAnalysisPage() {
 
   const {
     isScanning: isJunkScanning,
+    isCompleted: isJunkCompleted,
     scanProgress: junkProgress,
+    scanId: junkScanId,
     results: junkResults,
     selectedFiles: junkSelected,
     expandedTypes,
@@ -1308,13 +1214,15 @@ export default function FileAnalysisPage() {
   const junkPageState = useMemo(() => {
     if (junkError) return 'error';
     if (isJunkScanning && !junkProgress) return 'initializing';
+    if (isJunkCompleted) return 'completed'; // 优先检查完成标志
     const status = junkProgress?.status?.toLowerCase();
     if (status === 'scanning') return 'scanning';
     if (status === 'paused') return 'paused';
     if (status === 'completed') return 'completed';
+    if (status === 'error') return 'error';
     if (junkResults.length > 0) return 'completed';
     return 'idle';
-  }, [isJunkScanning, junkProgress, junkResults.length, junkError]);
+  }, [isJunkScanning, isJunkCompleted, junkProgress, junkResults.length, junkError]);
 
   const pageState = analysisMode === 'largeFile' ? largeFilePageState : junkPageState;
 
@@ -1341,27 +1249,8 @@ export default function FileAnalysisPage() {
     }
   };
 
-  const largeFileSelectedSize = useMemo(() => {
-    let size = 0;
-    for (const file of filteredFiles) {
-      if (largeFileSelected.has(file.path)) {
-        size += file.size;
-      }
-    }
-    return size;
-  }, [filteredFiles, largeFileSelected]);
-
-  const junkSelectedSize = useMemo(() => {
-    let size = 0;
-    junkResults.forEach(result => {
-      result.items.forEach(item => {
-        if (junkSelected.has(item.path)) {
-          size += item.size;
-        }
-      });
-    });
-    return size;
-  }, [junkResults, junkSelected]);
+  const largeFileSelectedSize = useSelectedSize(filteredFiles, largeFileSelected);
+  const junkSelectedSize = useSelectedSizeFromResults(junkResults, junkSelected);
 
   const selectedCount = analysisMode === 'largeFile' ? largeFileSelected.size : junkSelected.size;
   const selectedSize = analysisMode === 'largeFile' ? largeFileSelectedSize : junkSelectedSize;
@@ -1603,6 +1492,7 @@ export default function FileAnalysisPage() {
       return (
         <JunkFileList
           results={junkResults}
+          scanId={junkScanId}
           selectedFiles={junkSelected}
           expandedTypes={expandedTypes}
           onToggleSelection={toggleJunkSelection}
@@ -1667,6 +1557,7 @@ export default function FileAnalysisPage() {
               <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
               <div className="flex-1">
                 <p className="text-sm text-red-400">{error}</p>
+                <p className="text-xs text-red-400/70 mt-1">请检查磁盘权限或稍后重试</p>
               </div>
               <motion.button
                 onClick={analysisMode === 'largeFile' ? startLargeFileScan : startJunkScan}

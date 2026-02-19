@@ -1,12 +1,12 @@
 import { MainLayout } from './components/layout';
-import { NavigationDock } from './components/common';
-import { 
-  SystemPage, 
-  ScanPage, 
-  CleanPage, 
+import { NavigationDock, TitleBar } from './components/common';
+import {
+  SystemPage,
+  ScanPage,
+  CleanPage,
   FileAnalysisPage,
   ToolsPage,
-  SettingsPage 
+  SettingsPage
 } from './pages';
 import { useUIStore, type UIState } from './stores';
 
@@ -33,10 +33,13 @@ function App() {
   };
 
   return (
-    <MainLayout>
-      {renderPage()}
-      <NavigationDock />
-    </MainLayout>
+    <div className="h-screen w-screen flex flex-col overflow-hidden">
+      <TitleBar />
+      <MainLayout>
+        {renderPage()}
+        <NavigationDock />
+      </MainLayout>
+    </div>
   );
 }
 

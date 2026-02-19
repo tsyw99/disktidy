@@ -168,31 +168,6 @@ export default function FileClassificationChart({
           animationDelay: (idx: number) => idx * 50,
         },
       ],
-      graphic: [
-        {
-          type: 'text',
-          left: '50%',
-          top: '45%',
-          style: {
-            text: '总计',
-            fontSize: 13,
-            fill: isDark ? '#9ca3af' : '#64748b',
-            textAlign: 'center',
-          },
-        },
-        {
-          type: 'text',
-          left: '50%',
-          top: '52%',
-          style: {
-            text: formatBytes(totalSize),
-            fontSize: 16,
-            fontWeight: 'bold',
-            fill: isDark ? '#f3f4f6' : '#1e293b',
-            textAlign: 'center',
-          },
-        },
-      ],
     };
   }, [chartData, totalSize, isDark]);
 
@@ -340,10 +315,15 @@ export default function FileClassificationChart({
         className="panel p-4 lg:p-6 overflow-hidden"
       >
         <div className="flex items-center justify-between mb-3 lg:mb-4">
-          <h3 className="text-base lg:text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]" />
-            文件类型分布
-          </h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-base lg:text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]" />
+              文件类型分布
+            </h3>
+            <span className="text-sm text-[var(--text-secondary)]">
+              总计 <span className="font-semibold text-[var(--text-primary)]">{formatBytes(totalSize)}</span>
+            </span>
+          </div>
           <div className="flex items-center gap-1 p-1 rounded-lg bg-[var(--bg-tertiary)]">
             <motion.button
               whileHover={{ scale: 1.05 }}

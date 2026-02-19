@@ -12,6 +12,9 @@ use crate::models::{
 use super::safety::SafetyChecker;
 use super::recycle_bin::RecycleBin;
 
+pub const SECURE_OVERWRITE_PATTERNS: [u8; 3] = [0x00, 0xFF, 0xAA];
+pub const DEFAULT_CHUNK_SIZE: usize = 64 * 1024;
+
 pub struct CleanerExecutor {
     options: CleanOptions,
     safety_checker: SafetyChecker,
@@ -227,33 +230,27 @@ impl CleanerExecutor {
             .await
             .map_err(DiskTidyError::IoError)?;
 
-        let pattern = self.get_overwrite_pattern(pass);
-        let chunk_size = 64 * 1024;
+        let pattern = SECURE_OVERWRITE_PATTERNS[pass as usize % SECURE_OVERWRITE_PATTERNS.len()];
+        let mut buffer = vec![pattern; DEFAULT_CHUNK_SIZE];
         let mut remaining = size;
 
         while remaining > 0 {
-            let write_size = std::cmp::min(remaining, chunk_size as u64);
-            let buffer = vec![pattern; write_size as usize];
+            let write_size = std::cmp::min(remaining, DEFAULT_CHUNK_SIZE as u64) as usize;
+            
+            if write_size < DEFAULT_CHUNK_SIZE {
+                buffer.truncate(write_size);
+            }
 
-            file.write_all(&buffer)
+            file.write_all(&buffer[..write_size])
                 .await
                 .map_err(DiskTidyError::IoError)?;
 
-            remaining -= write_size;
+            remaining -= write_size as u64;
         }
 
         file.flush().await.map_err(DiskTidyError::IoError)?;
 
         Ok(())
-    }
-
-    fn get_overwrite_pattern(&self, pass: u8) -> u8 {
-        match pass % 3 {
-            0 => 0x00,
-            1 => 0xFF,
-            2 => 0xAA,
-            _ => 0x00,
-        }
     }
 
     #[cfg(windows)]

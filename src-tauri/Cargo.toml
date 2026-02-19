@@ -1,6 +1,6 @@
 [package]
 name = "disktidy-lib"
-version = "1.0.0"
+version = "1.0.1"
 description = "Windows磁盘清理工具"
 authors = ["DiskTidy Team"]
 edition = "2021"
@@ -17,7 +17,7 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-shell = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
@@ -38,6 +38,8 @@ chrono = "0.4"
 futures = "0.3"
 lru = "0.12"
 rayon = "1"
+log = "0.4"
+env_logger = "0.11"
 
 [dev-dependencies]
 tempfile = "3"
@@ -55,6 +57,17 @@ winreg = "0.52"
 [profile.release]
 panic = "abort"
 codegen-units = 1
-lto = true
+lto = "thin"
 opt-level = "z"
 strip = true
+debug = false
+rpath = false
+debug-assertions = false
+overflow-checks = false
+
+[profile.dev]
+opt-level = 1
+debug = true
+debug-assertions = true
+overflow-checks = true
+lto = false

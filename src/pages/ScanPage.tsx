@@ -152,18 +152,7 @@ export default function ScanPage() {
   }, [showResults, result, isScanning, isPaused, progress]);
 
   const selectedCount = selectedFiles.size;
-  const selectedSize = useMemo(() => {
-    if (!result) return 0;
-    let size = 0;
-    for (const category of result.categories) {
-      for (const file of category.files) {
-        if (selectedFiles.has(file.path)) {
-          size += file.size;
-        }
-      }
-    }
-    return size;
-  }, [result, selectedFiles]);
+  const selectedSize = useScanStore((state) => state.actions.getSelectedSize());
 
   const renderScanButtons = () => {
     if (isScanning) {
@@ -417,7 +406,7 @@ export default function ScanPage() {
   );
 
   const renderEmptyState = () => {
-    if (scanMode === 'deep') {
+    if (scanMode === 'full') {
       return renderDeepScanEmptyState();
     }
     return renderQuickScanEmptyState();
@@ -491,7 +480,7 @@ export default function ScanPage() {
             <SegmentedControl
               options={[
                 { value: 'quick', label: '快速扫描', icon: <Zap className="w-4 h-4" />, disabled: !canStart },
-                { value: 'deep', label: '深度扫描', icon: <HardDrive className="w-4 h-4" />, disabled: !canStart },
+                { value: 'full', label: '深度扫描', icon: <HardDrive className="w-4 h-4" />, disabled: !canStart },
               ]}
               value={scanMode}
               onChange={(mode) => handleModeChange(mode)}

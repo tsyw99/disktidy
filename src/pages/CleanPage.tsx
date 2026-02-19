@@ -3,6 +3,7 @@ import { motion, AnimatePresence, type Transition } from 'framer-motion';
 import { VirtualFileList } from '../components/common/VirtualFileList';
 import { AppCacheScanProgress, DeleteConfirmModal, PathConfigModal } from '../components/clean';
 import { formatBytes, formatDate } from '../utils/format';
+import { ENABLED_APPS, APP_CONFIGS, CATEGORY_CONFIGS } from '../utils/constants';
 import { useAppCacheStore, useAppCacheActions } from '../stores/appCacheStore';
 import { useUIStore } from '../stores';
 import { cleanService } from '../services/cleanService';
@@ -65,25 +66,32 @@ interface CategoryConfig {
   description: string;
 }
 
-const apps: AppConfig[] = [
-  { id: 'wechat', name: '微信', icon: <MessageCircle className="w-5 h-5" />, color: '#07C160', bgColor: 'bg-[#07C160]/10' },
-  { id: 'dingtalk', name: '钉钉', icon: <Users className="w-5 h-5" />, color: '#0089FF', bgColor: 'bg-[#0089FF]/10' },
-  { id: 'qq', name: 'QQ', icon: <MessageCircle className="w-5 h-5" />, color: '#12B7F5', bgColor: 'bg-[#12B7F5]/10' },
-  { id: 'wework', name: '企业微信', icon: <Users className="w-5 h-5" />, color: '#2B7EFF', bgColor: 'bg-[#2B7EFF]/10' },
-];
+const apps: AppConfig[] = APP_CONFIGS.map(app => ({
+  id: app.id as AppType,
+  name: app.name,
+  icon: app.id === 'wechat' || app.id === 'qq' 
+    ? <MessageCircle className="w-5 h-5" /> 
+    : <Users className="w-5 h-5" />,
+  color: app.color,
+  bgColor: app.bgColor,
+}));
 
-const ENABLED_APPS: AppType[] = ['wechat'];
-
-const categories: CategoryConfig[] = [
-  { id: 'chat_images', name: '聊天图片', icon: <Image className="w-4 h-4" />, description: '聊天过程中发送和接收的图片，包括加密的.dat文件' },
-  { id: 'video_files', name: '视频文件', icon: <Video className="w-4 h-4" />, description: '聊天过程中发送和接收的视频文件' },
-  { id: 'document_files', name: '文档文件', icon: <FileText className="w-4 h-4" />, description: '聊天过程中接收的文档、压缩包等文件' },
-  { id: 'install_packages', name: '安装包', icon: <Package className="w-4 h-4" />, description: '接收的安装包文件（apk、exe等）' },
-  { id: 'cache_data', name: '缓存数据', icon: <Clock className="w-4 h-4" />, description: 'HTTP资源缓存、小程序图标缓存等' },
-  { id: 'emoji_cache', name: '表情缓存', icon: <Smile className="w-4 h-4" />, description: '表情包缓存文件' },
-  { id: 'temp_files', name: '临时文件', icon: <FileText className="w-4 h-4" />, description: '临时文件，可安全清理' },
-  { id: 'thumb_cache', name: '缩略图缓存', icon: <Image className="w-4 h-4" />, description: '图片和视频的缩略图缓存' },
-];
+const categories: CategoryConfig[] = CATEGORY_CONFIGS.map(cat => ({
+  id: cat.id as CleanCategory,
+  name: cat.name,
+  icon: cat.id === 'chat_images' || cat.id === 'thumb_cache'
+    ? <Image className="w-4 h-4" />
+    : cat.id === 'video_files'
+    ? <Video className="w-4 h-4" />
+    : cat.id === 'emoji_cache'
+    ? <Smile className="w-4 h-4" />
+    : cat.id === 'cache_data'
+    ? <Clock className="w-4 h-4" />
+    : cat.id === 'install_packages'
+    ? <Package className="w-4 h-4" />
+    : <FileText className="w-4 h-4" />,
+  description: cat.description,
+}));
 
 const VIRTUAL_LIST_THRESHOLD = 50;
 

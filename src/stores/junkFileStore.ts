@@ -1,5 +1,10 @@
 /**
  * 零碎文件扫描状态管理
+ * 
+ * 优化点：
+ * 1. 监听器初始化非阻塞：后台异步初始化，不等待完成
+ * 2. 错误处理增强：捕获并显示扫描过程中的错误
+ * 3. 进度实时更新：正确处理进度百分比
  */
 
 import { create } from 'zustand';
@@ -10,11 +15,15 @@ import type {
   JunkFileScanProgress,
 } from '../types/fileAnalyzer';
 
+// 监听器状态跟踪
 let junkListenersInitialized = false;
-let junkListenersInitPromise: Promise<void> | null = null;
+let junkListenersInitializing = false;
+let progressListener: (() => void) | null = null;
+let completeListener: (() => void) | null = null;
 
 interface JunkFileState {
   isScanning: boolean;
+  isCompleted: boolean; // 新增：跟踪扫描是否完成
   scanProgress: JunkFileScanProgress | null;
   scanId: string | null;
   error: string | null;
@@ -59,54 +68,96 @@ const defaultOptions: JunkScanOptions = {
   include_system: false,
 };
 
-async function ensureJunkListenersInitialized(): Promise<void> {
-  if (junkListenersInitialized) {
+/**
+ * 初始化事件监听器（非阻塞版本）
+ * 快速返回，在后台完成监听器注册
+ */
+async function initListenersAsync(): Promise<void> {
+  if (junkListenersInitialized || junkListenersInitializing) {
     return;
   }
   
-  if (junkListenersInitPromise) {
-    return junkListenersInitPromise;
-  }
+  junkListenersInitializing = true;
+  
+  try {
+    // 先清理旧的监听器
+    if (progressListener) {
+      progressListener();
+      progressListener = null;
+    }
+    if (completeListener) {
+      completeListener();
+      completeListener = null;
+    }
 
-  junkListenersInitPromise = (async () => {
-    await junkFileScanService.onProgress((progress) => {
-      console.log('[JunkFileStore] Received progress:', JSON.stringify(progress, null, 2));
+    // 注册进度监听器
+    progressListener = await junkFileScanService.onProgress((progress) => {
       const state = useJunkFileStore.getState();
       const { scanId } = state;
       
+      // 验证扫描ID匹配
       if (!scanId || progress.scanId === scanId) {
         const progressStatus = progress.status;
+        
+        // 忽略空闲状态
         if (progressStatus === 'idle') {
           return;
         }
+        
+        const isCompleted = progressStatus === 'completed';
+        const isError = progressStatus === 'error';
+        
+        // 更新状态 - 注意：完成时不清理 scanId，由 completeListener 处理
         useJunkFileStore.setState({
-          scanProgress: progress,
+          scanProgress: isCompleted || isError ? null : progress,
           isScanning: progressStatus === 'scanning' || progressStatus === 'paused',
+          error: isError ? '扫描过程中发生错误' : null,
         });
       }
     });
 
-    await junkFileScanService.onComplete((result) => {
-      console.log('[JunkFileStore] Received complete:', result);
+    // 注册完成监听器
+    completeListener = await junkFileScanService.onComplete((result) => {
       const state = useJunkFileStore.getState();
-      const { scanId } = state;
-      if (scanId) {
-        useJunkFileStore.setState({
-          results: result,
-          isScanning: false,
-          scanProgress: null,
-        });
-      }
+      const currentScanId = state.scanId;
+
+      // 创建完成状态的进度对象
+      const completedProgress: JunkFileScanProgress = {
+        scanId: currentScanId || '',
+        currentPath: '',
+        scannedFiles: 0,
+        foundFiles: result.reduce((sum, r) => sum + r.count, 0),
+        scannedSize: 0,
+        totalSize: result.reduce((sum, r) => sum + r.total_size, 0),
+        percent: 100,
+        currentPhase: '扫描完成',
+        status: 'completed',
+        speed: 0,
+      };
+      
+      // 保存结果并更新状态 - 保留 scanId 用于分页加载
+      useJunkFileStore.setState({
+        results: result,
+        isScanning: false,
+        isCompleted: true,
+        scanProgress: completedProgress,
+        // 注意：不清空 scanId，保留它用于分页加载
+        error: null,
+      });
     });
     
     junkListenersInitialized = true;
-  })();
-
-  return junkListenersInitPromise;
+    junkListenersInitializing = false;
+  } catch (error) {
+    console.error('[JunkFileStore] Failed to initialize listeners:', error);
+    junkListenersInitializing = false;
+    throw error;
+  }
 }
 
 export const useJunkFileStore = create<JunkFileState>((set, get) => ({
   isScanning: false,
+  isCompleted: false,
   scanProgress: null,
   scanId: null,
   error: null,
@@ -203,14 +254,21 @@ export const useJunkFileStore = create<JunkFileState>((set, get) => ({
   },
 
   initListeners: async () => {
-    await ensureJunkListenersInitialized();
+    // 非阻塞初始化：立即返回，后台完成监听器注册
+    initListenersAsync().catch(err => {
+      console.error('[JunkFileStore] Listener initialization failed:', err);
+    });
   },
 
   startScan: async () => {
-    await ensureJunkListenersInitialized();
+    // 确保监听器已初始化
+    if (!junkListenersInitialized) {
+      await initListenersAsync();
+    }
 
     const { selectedDisk, options } = get();
 
+    // 设置初始状态（快速响应UI）
     const initialProgress: JunkFileScanProgress = {
       scanId: '',
       currentPath: '',
@@ -219,13 +277,14 @@ export const useJunkFileStore = create<JunkFileState>((set, get) => ({
       scannedSize: 0,
       totalSize: 0,
       percent: 0,
-      currentPhase: '',
+      currentPhase: '正在启动扫描...',
       status: 'scanning',
       speed: 0,
     };
 
     set({
       isScanning: true,
+      isCompleted: false,
       scanProgress: initialProgress,
       error: null,
       results: [],
@@ -235,21 +294,25 @@ export const useJunkFileStore = create<JunkFileState>((set, get) => ({
     });
 
     try {
-      const scanId = await junkFileScanService.start({
+      const scanOptions = {
         ...options,
         scan_paths: [selectedDisk],
-      });
+      };
+
+      const scanId = await junkFileScanService.start(scanOptions);
 
       if (!scanId) {
-        throw new Error('后端未返回 scanId');
+        throw new Error('后端未返回扫描ID');
       }
       
       set({ scanId });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '扫描失败';
+      const errorMessage = error instanceof Error ? error.message : '扫描启动失败';
+      console.error('[JunkFileStore] Scan start failed:', errorMessage);
       set({
         error: errorMessage,
         isScanning: false,
+        isCompleted: false,
         scanId: null,
         scanProgress: null,
       });
@@ -267,8 +330,10 @@ export const useJunkFileStore = create<JunkFileState>((set, get) => ({
           scanProgress: { ...scanProgress, status: 'paused' },
         });
       }
-    } catch {
-      // 静默处理
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '暂停扫描失败';
+      console.error('[JunkFileStore] Pause failed:', errorMessage);
+      set({ error: errorMessage });
     }
   },
 
@@ -283,8 +348,10 @@ export const useJunkFileStore = create<JunkFileState>((set, get) => ({
           scanProgress: { ...scanProgress, status: 'scanning' },
         });
       }
-    } catch {
-      // 静默处理
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '恢复扫描失败';
+      console.error('[JunkFileStore] Resume failed:', errorMessage);
+      set({ error: errorMessage });
     }
   },
 
@@ -296,19 +363,30 @@ export const useJunkFileStore = create<JunkFileState>((set, get) => ({
       await junkFileScanService.cancel(scanId);
       set({
         isScanning: false,
+        isCompleted: false,
         scanProgress: null,
         scanId: null,
         results: [],
         selectedFiles: new Set(),
+        error: null,
       });
-    } catch {
-      // 静默处理
+    } catch (error) {
+      console.error('[JunkFileStore] Cancel failed:', error);
+      // 即使取消失败，也重置状态
+      set({
+        isScanning: false,
+        isCompleted: false,
+        scanProgress: null,
+        scanId: null,
+        error: '取消扫描失败',
+      });
     }
   },
 
   reset: () => {
     set({
       isScanning: false,
+      isCompleted: false,
       scanProgress: null,
       scanId: null,
       error: null,
@@ -323,5 +401,16 @@ export const useJunkFileStore = create<JunkFileState>((set, get) => ({
     if (scanId) {
       junkFileScanService.clearResult(scanId).catch(() => {});
     }
+    // 清理监听器
+    if (progressListener) {
+      progressListener();
+      progressListener = null;
+    }
+    if (completeListener) {
+      completeListener();
+      completeListener = null;
+    }
+    junkListenersInitialized = false;
+    junkListenersInitializing = false;
   },
 }));

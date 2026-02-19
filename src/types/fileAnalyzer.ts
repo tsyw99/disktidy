@@ -207,6 +207,12 @@ export interface JunkScanResult {
   count: number;
 }
 
+export interface JunkCategoryFilesResponse {
+  files: JunkFileItem[];
+  total: number;
+  has_more: boolean;
+}
+
 export interface JunkScanOptions {
   scan_paths: string[];
   include_empty_folders: boolean;

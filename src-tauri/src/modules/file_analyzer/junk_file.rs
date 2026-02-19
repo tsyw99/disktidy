@@ -10,7 +10,7 @@ use std::os::windows::fs::MetadataExt;
 use crate::modules::cleaner::safety::SafetyChecker;
 use crate::utils::path::{PathUtils, SystemPaths};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum JunkFileType {
     EmptyFolders,

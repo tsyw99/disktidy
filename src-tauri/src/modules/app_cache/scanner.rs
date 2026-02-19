@@ -1,3 +1,4 @@
+use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -16,6 +17,15 @@ use crate::utils::{
 
 pub const EVENT_APP_CACHE_PROGRESS: &str = "app_cache:progress";
 pub const EVENT_APP_CACHE_COMPLETE: &str = "app_cache:complete";
+
+pub const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "bmp", "webp"];
+pub const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "avi", "mkv", "wmv", "flv"];
+pub const DOC_EXTENSIONS: &[&str] = &[
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "zip", "rar", "7z",
+];
+pub const INSTALL_EXTENSIONS: &[&str] = &["apk", "ipa", "exe", "dmg"];
+pub const VOICE_EXTENSIONS: &[&str] = &["amr", "mp3", "wav"];
+pub const EMOJI_EXTENSIONS: &[&str] = &["gif", "png", "jpg"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -331,7 +341,7 @@ pub async fn start_app_cache_scan(
             if let Some(progress) = progress_map.get_mut(&scan_id_clone) {
                 progress.status = AppCacheScanStatus::Error;
             }
-            eprintln!("App cache scan error: {}", e);
+            error!("App cache scan error: {}", e);
         }
 
         SCAN_CONTROLLERS.write().await.remove(&scan_id_clone);
@@ -352,7 +362,7 @@ async fn perform_app_cache_scan(
     let mut last_update = 0u64;
     let mut skipped_files: u64 = 0;
 
-    println!(
+    debug!(
         "[AppCacheScan] Starting scan with options: apps={:?}, categories={:?}, incremental={}",
         options.apps, options.categories, options.incremental
     );
@@ -371,7 +381,7 @@ async fn perform_app_cache_scan(
         .filter_map(|s| AppType::from_str(s))
         .collect();
 
-    println!(
+    debug!(
         "[AppCacheScan] Parsed apps: {:?}",
         apps.iter().map(|a| a.to_str()).collect::<Vec<_>>()
     );
@@ -402,7 +412,7 @@ async fn perform_app_cache_scan(
     };
 
     if last_scan_timestamp > 0 {
-        println!(
+        debug!(
             "[AppCacheScan] Using incremental scan, last scan timestamp: {}",
             last_scan_timestamp
         );
@@ -413,7 +423,7 @@ async fn perform_app_cache_scan(
     let is_incremental = last_scan_timestamp > 0;
 
     for app_type in &apps {
-        println!("[AppCacheScan] Processing app: {}", app_type.to_str());
+        debug!("[AppCacheScan] Processing app: {}", app_type.to_str());
 
         if *cancel_receiver.borrow() {
             let mut progress_map = SCAN_PROGRESS.write().await;
@@ -451,14 +461,14 @@ async fn perform_app_cache_scan(
         }
 
         let resolved_paths = resolve_app_paths(app_type);
-        println!(
+        debug!(
             "[AppCacheScan] Resolved {} paths for {}",
             resolved_paths.len(),
             app_type.to_str()
         );
 
         for resolved in resolved_paths {
-            println!(
+            debug!(
                 "[AppCacheScan] Scanning path: {} (source: {:?})",
                 resolved.path.display(),
                 resolved.source
@@ -492,7 +502,7 @@ async fn perform_app_cache_scan(
     let total_files = files.len() as u64;
     let total_size = files.iter().map(|f| f.size).sum();
 
-    println!(
+    debug!(
         "[AppCacheScan] Scan completed: {} files, {} bytes, {} ms, {} skipped",
         total_files, total_size, duration_ms, skipped_files
     );
@@ -528,7 +538,7 @@ async fn perform_app_cache_scan(
         .write()
         .await
         .insert(scan_id.to_string(), result.clone());
-    println!(
+    debug!(
         "[AppCacheScan] Emitting complete event with {} files",
         result.files.len()
     );
@@ -668,7 +678,7 @@ async fn scan_wechat(
     skipped_files: &mut u64,
     account_id: Option<&str>,
 ) {
-    println!(
+    debug!(
         "[AppCacheScan] scan_wechat called with base_path: {}",
         base_path.display()
     );
@@ -1004,15 +1014,13 @@ async fn scan_wechat_video_files(
         return;
     }
 
-    let video_extensions = ["mp4", "mov", "avi", "mkv", "wmv", "flv"];
-
     if let Ok(month_entries) = fs::read_dir(video_dir) {
         for month_entry in month_entries.flatten() {
             let month_dir = month_entry.path();
             if month_dir.is_dir() {
                 scan_files_by_extension_async(
                     &month_dir,
-                    &video_extensions,
+                    VIDEO_EXTENSIONS,
                     CleanCategory::VideoFiles,
                     AppType::Wechat,
                     chat_object,
@@ -1055,18 +1063,13 @@ async fn scan_wechat_document_files(
         return;
     }
 
-    let doc_extensions = [
-        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "zip", "rar", "7z",
-    ];
-    let install_extensions = ["apk", "ipa", "exe", "dmg"];
-
     if let Ok(month_entries) = fs::read_dir(file_dir) {
         for month_entry in month_entries.flatten() {
             let month_dir = month_entry.path();
             if month_dir.is_dir() {
                 scan_files_by_extension_async(
                     &month_dir,
-                    &doc_extensions,
+                    DOC_EXTENSIONS,
                     CleanCategory::DocumentFiles,
                     AppType::Wechat,
                     chat_object,
@@ -1086,7 +1089,7 @@ async fn scan_wechat_document_files(
                 .await;
                 scan_files_by_extension_async(
                     &month_dir,
-                    &install_extensions,
+                    INSTALL_EXTENSIONS,
                     CleanCategory::InstallPackages,
                     AppType::Wechat,
                     chat_object,
@@ -1371,11 +1374,6 @@ async fn scan_dingtalk(
     skipped_files: &mut u64,
     account_id: Option<&str>,
 ) {
-    let image_extensions = ["jpg", "jpeg", "png", "gif", "bmp", "webp"];
-    let video_extensions = ["mp4", "mov", "avi", "mkv"];
-    let doc_extensions = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt"];
-    let voice_extensions = ["amr", "mp3", "wav"];
-
     let chat_object = account_id
         .unwrap_or_else(|| {
             base_path
@@ -1389,7 +1387,7 @@ async fn scan_dingtalk(
         let image_path = base_path.join("Image");
         scan_files_by_extension_async(
             &image_path,
-            &image_extensions,
+            IMAGE_EXTENSIONS,
             CleanCategory::ChatImages,
             AppType::Dingtalk,
             &chat_object,
@@ -1410,7 +1408,7 @@ async fn scan_dingtalk(
         let image_path2 = base_path.join("images");
         scan_files_by_extension_async(
             &image_path2,
-            &image_extensions,
+            IMAGE_EXTENSIONS,
             CleanCategory::ChatImages,
             AppType::Dingtalk,
             &chat_object,
@@ -1434,7 +1432,7 @@ async fn scan_dingtalk(
         let video_path = base_path.join("Video");
         scan_files_by_extension_async(
             &video_path,
-            &video_extensions,
+            VIDEO_EXTENSIONS,
             CleanCategory::VideoFiles,
             AppType::Dingtalk,
             &chat_object,
@@ -1458,7 +1456,7 @@ async fn scan_dingtalk(
         let file_path = base_path.join("File");
         scan_files_by_extension_async(
             &file_path,
-            &doc_extensions,
+            DOC_EXTENSIONS,
             CleanCategory::DocumentFiles,
             AppType::Dingtalk,
             &chat_object,
@@ -1525,7 +1523,7 @@ async fn scan_dingtalk(
         let voice_path = base_path.join("Voice");
         scan_files_by_extension_async(
             &voice_path,
-            &voice_extensions,
+            VOICE_EXTENSIONS,
             CleanCategory::VoiceFiles,
             AppType::Dingtalk,
             &chat_object,
@@ -1563,14 +1561,6 @@ async fn scan_qq(
     skipped_files: &mut u64,
     account_id: Option<&str>,
 ) {
-    let image_extensions = ["jpg", "jpeg", "png", "gif", "bmp", "webp"];
-    let video_extensions = ["mp4", "mov", "avi", "mkv", "flv"];
-    let doc_extensions = [
-        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "zip", "rar",
-    ];
-    let voice_extensions = ["amr", "mp3", "wav", "slk"];
-    let emoji_extensions = ["gif", "png", "jpg"];
-
     let chat_object = account_id
         .unwrap_or_else(|| {
             base_path
@@ -1584,7 +1574,7 @@ async fn scan_qq(
         let image_path = base_path.join("Image");
         scan_files_by_extension_async(
             &image_path,
-            &image_extensions,
+            IMAGE_EXTENSIONS,
             CleanCategory::ChatImages,
             AppType::Qq,
             &chat_object,
@@ -1605,7 +1595,7 @@ async fn scan_qq(
         let image_path2 = base_path.join("FileRecv/Image");
         scan_files_by_extension_async(
             &image_path2,
-            &image_extensions,
+            IMAGE_EXTENSIONS,
             CleanCategory::ChatImages,
             AppType::Qq,
             &chat_object,
@@ -1629,7 +1619,7 @@ async fn scan_qq(
         let video_path = base_path.join("Video");
         scan_files_by_extension_async(
             &video_path,
-            &video_extensions,
+            VIDEO_EXTENSIONS,
             CleanCategory::VideoFiles,
             AppType::Qq,
             &chat_object,
@@ -1653,7 +1643,7 @@ async fn scan_qq(
         let file_path = base_path.join("FileRecv");
         scan_files_by_extension_async(
             &file_path,
-            &doc_extensions,
+            DOC_EXTENSIONS,
             CleanCategory::DocumentFiles,
             AppType::Qq,
             &chat_object,
@@ -1700,7 +1690,7 @@ async fn scan_qq(
         let voice_path = base_path.join("Audio");
         scan_files_by_extension_async(
             &voice_path,
-            &voice_extensions,
+            VOICE_EXTENSIONS,
             CleanCategory::VoiceFiles,
             AppType::Qq,
             &chat_object,
@@ -1724,7 +1714,7 @@ async fn scan_qq(
         let emoji_path = base_path.join("Emoji");
         scan_files_by_extension_async(
             &emoji_path,
-            &emoji_extensions,
+            EMOJI_EXTENSIONS,
             CleanCategory::EmojiCache,
             AppType::Qq,
             &chat_object,
@@ -1762,11 +1752,6 @@ async fn scan_wework(
     skipped_files: &mut u64,
     account_id: Option<&str>,
 ) {
-    let image_extensions = ["jpg", "jpeg", "png", "gif", "bmp", "webp"];
-    let video_extensions = ["mp4", "mov", "avi", "mkv"];
-    let doc_extensions = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt"];
-    let voice_extensions = ["amr", "mp3", "wav"];
-
     let chat_object = account_id
         .unwrap_or_else(|| {
             base_path
@@ -1780,7 +1765,7 @@ async fn scan_wework(
         let image_path = base_path.join("Image");
         scan_files_by_extension_async(
             &image_path,
-            &image_extensions,
+            IMAGE_EXTENSIONS,
             CleanCategory::ChatImages,
             AppType::Wework,
             &chat_object,
@@ -1804,7 +1789,7 @@ async fn scan_wework(
         let video_path = base_path.join("Video");
         scan_files_by_extension_async(
             &video_path,
-            &video_extensions,
+            VIDEO_EXTENSIONS,
             CleanCategory::VideoFiles,
             AppType::Wework,
             &chat_object,
@@ -1828,7 +1813,7 @@ async fn scan_wework(
         let file_path = base_path.join("File");
         scan_files_by_extension_async(
             &file_path,
-            &doc_extensions,
+            DOC_EXTENSIONS,
             CleanCategory::DocumentFiles,
             AppType::Wework,
             &chat_object,
@@ -1875,7 +1860,7 @@ async fn scan_wework(
         let voice_path = base_path.join("Voice");
         scan_files_by_extension_async(
             &voice_path,
-            &voice_extensions,
+            VOICE_EXTENSIONS,
             CleanCategory::VoiceFiles,
             AppType::Wework,
             &chat_object,

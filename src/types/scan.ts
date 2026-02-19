@@ -1,4 +1,4 @@
-export type ScanMode = 'quick' | 'deep' | 'custom';
+export type ScanMode = 'quick' | 'full' | 'custom';
 
 export interface ScanOptions {
   paths: string[];

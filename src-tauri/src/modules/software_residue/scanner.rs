@@ -9,8 +9,54 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 use walkdir::WalkDir;
 
+use lazy_static::lazy_static;
+
 use crate::modules::cleaner::safety::SafetyChecker;
 use crate::utils::path::{PathUtils, SystemPaths};
+
+lazy_static! {
+    static ref KNOWN_APP_PATTERNS: HashMap<String, String> = {
+        let mut patterns = HashMap::new();
+        patterns.insert("wechat".to_string(), "微信".to_string());
+        patterns.insert("tencent".to_string(), "腾讯".to_string());
+        patterns.insert("qq".to_string(), "QQ".to_string());
+        patterns.insert("dingtalk".to_string(), "钉钉".to_string());
+        patterns.insert("wework".to_string(), "企业微信".to_string());
+        patterns.insert("adobe".to_string(), "Adobe".to_string());
+        patterns.insert("microsoft".to_string(), "微软".to_string());
+        patterns.insert("google".to_string(), "Google".to_string());
+        patterns.insert("chrome".to_string(), "Chrome".to_string());
+        patterns.insert("mozilla".to_string(), "Mozilla".to_string());
+        patterns.insert("firefox".to_string(), "Firefox".to_string());
+        patterns.insert("steam".to_string(), "Steam".to_string());
+        patterns.insert("unity".to_string(), "Unity".to_string());
+        patterns.insert("nvidia".to_string(), "NVIDIA".to_string());
+        patterns.insert("intel".to_string(), "Intel".to_string());
+        patterns.insert("nodejs".to_string(), "Node.js".to_string());
+        patterns.insert("python".to_string(), "Python".to_string());
+        patterns.insert("java".to_string(), "Java".to_string());
+        patterns.insert("docker".to_string(), "Docker".to_string());
+        patterns.insert("vscode".to_string(), "VS Code".to_string());
+        patterns.insert("visual studio".to_string(), "Visual Studio".to_string());
+        patterns.insert("jetbrains".to_string(), "JetBrains".to_string());
+        patterns.insert("notepad++".to_string(), "Notepad++".to_string());
+        patterns.insert("7-zip".to_string(), "7-Zip".to_string());
+        patterns.insert("winrar".to_string(), "WinRAR".to_string());
+        patterns.insert("obs".to_string(), "OBS".to_string());
+        patterns.insert("spotify".to_string(), "Spotify".to_string());
+        patterns.insert("discord".to_string(), "Discord".to_string());
+        patterns.insert("slack".to_string(), "Slack".to_string());
+        patterns.insert("zoom".to_string(), "Zoom".to_string());
+        patterns.insert("teams".to_string(), "Teams".to_string());
+        patterns.insert("skype".to_string(), "Skype".to_string());
+        patterns.insert("baidu".to_string(), "百度".to_string());
+        patterns.insert("360".to_string(), "360".to_string());
+        patterns.insert("thunder".to_string(), "迅雷".to_string());
+        patterns.insert("netease".to_string(), "网易".to_string());
+        patterns.insert("wps".to_string(), "WPS".to_string());
+        patterns
+    };
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -632,48 +678,8 @@ impl SoftwareResidueScanner {
         paths
     }
 
-    fn get_known_app_folder_patterns(&self) -> HashMap<String, String> {
-        let mut patterns = HashMap::new();
-
-        patterns.insert("wechat".to_lowercase(), "微信".to_string());
-        patterns.insert("tencent".to_lowercase(), "腾讯".to_string());
-        patterns.insert("qq".to_lowercase(), "QQ".to_string());
-        patterns.insert("dingtalk".to_lowercase(), "钉钉".to_string());
-        patterns.insert("wework".to_lowercase(), "企业微信".to_string());
-        patterns.insert("adobe".to_lowercase(), "Adobe".to_string());
-        patterns.insert("microsoft".to_lowercase(), "微软".to_string());
-        patterns.insert("google".to_lowercase(), "Google".to_string());
-        patterns.insert("chrome".to_lowercase(), "Chrome".to_string());
-        patterns.insert("mozilla".to_lowercase(), "Mozilla".to_string());
-        patterns.insert("firefox".to_lowercase(), "Firefox".to_string());
-        patterns.insert("steam".to_lowercase(), "Steam".to_string());
-        patterns.insert("unity".to_lowercase(), "Unity".to_string());
-        patterns.insert("nvidia".to_lowercase(), "NVIDIA".to_string());
-        patterns.insert("intel".to_lowercase(), "Intel".to_string());
-        patterns.insert("nodejs".to_lowercase(), "Node.js".to_string());
-        patterns.insert("python".to_lowercase(), "Python".to_string());
-        patterns.insert("java".to_lowercase(), "Java".to_string());
-        patterns.insert("docker".to_lowercase(), "Docker".to_string());
-        patterns.insert("vscode".to_lowercase(), "VS Code".to_string());
-        patterns.insert("visual studio".to_lowercase(), "Visual Studio".to_string());
-        patterns.insert("jetbrains".to_lowercase(), "JetBrains".to_string());
-        patterns.insert("notepad++".to_lowercase(), "Notepad++".to_string());
-        patterns.insert("7-zip".to_lowercase(), "7-Zip".to_string());
-        patterns.insert("winrar".to_lowercase(), "WinRAR".to_string());
-        patterns.insert("obs".to_lowercase(), "OBS".to_string());
-        patterns.insert("spotify".to_lowercase(), "Spotify".to_string());
-        patterns.insert("discord".to_lowercase(), "Discord".to_string());
-        patterns.insert("slack".to_lowercase(), "Slack".to_string());
-        patterns.insert("zoom".to_lowercase(), "Zoom".to_string());
-        patterns.insert("teams".to_lowercase(), "Teams".to_string());
-        patterns.insert("skype".to_lowercase(), "Skype".to_string());
-        patterns.insert("baidu".to_lowercase(), "百度".to_string());
-        patterns.insert("360".to_lowercase(), "360".to_string());
-        patterns.insert("thunder".to_lowercase(), "迅雷".to_string());
-        patterns.insert("netease".to_lowercase(), "网易".to_string());
-        patterns.insert("wps".to_lowercase(), "WPS".to_string());
-
-        patterns
+    fn get_known_app_folder_patterns(&self) -> &'static HashMap<String, String> {
+        &KNOWN_APP_PATTERNS
     }
 
     fn is_installed_software_folder(&self, folder_name: &str) -> bool {
@@ -704,12 +710,12 @@ impl SoftwareResidueScanner {
         &self,
         path: &Path,
         folder_name: &str,
-        known_patterns: &HashMap<String, String>,
+        known_patterns: &'static HashMap<String, String>,
     ) -> bool {
         let name_lower = folder_name.to_lowercase();
 
         for (pattern, _) in known_patterns {
-            if name_lower.contains(pattern) {
+            if name_lower.contains(pattern.as_str()) {
                 if !self.is_installed_software_folder(folder_name) {
                     return true;
                 }
@@ -740,7 +746,7 @@ impl SoftwareResidueScanner {
         let known_patterns = self.get_known_app_folder_patterns();
 
         for (pattern, _) in known_patterns {
-            if key_name.contains(&pattern) {
+            if key_name.contains(pattern.as_str()) {
                 return true;
             }
         }
@@ -753,7 +759,7 @@ impl SoftwareResidueScanner {
         let known_patterns = self.get_known_app_folder_patterns();
 
         for (pattern, _) in known_patterns {
-            if name_lower.contains(&pattern) {
+            if name_lower.contains(pattern.as_str()) {
                 if !self.is_installed_software_folder(folder_name) {
                     return true;
                 }
@@ -768,7 +774,7 @@ impl SoftwareResidueScanner {
         let known_patterns = self.get_known_app_folder_patterns();
 
         for (pattern, _) in known_patterns {
-            if name_lower.contains(&pattern) {
+            if name_lower.contains(pattern.as_str()) {
                 if !self.is_installed_software_folder(folder_name) {
                     return true;
                 }

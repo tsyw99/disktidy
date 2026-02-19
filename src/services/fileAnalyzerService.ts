@@ -14,6 +14,7 @@ import type {
   JunkScanOptions,
   JunkScanResult,
   JunkTypeInfo,
+  JunkCategoryFilesResponse,
 } from '../types';
 
 export const fileAnalyzerService = {
@@ -49,4 +50,17 @@ export const fileAnalyzerService = {
 
   getJunkFileTypes: (): Promise<JunkTypeInfo[]> =>
     invoke<JunkTypeInfo[]>('get_junk_file_types'),
+
+  getJunkCategoryFiles: (
+    scanId: string,
+    fileType: string,
+    offset: number,
+    limit: number
+  ): Promise<JunkCategoryFilesResponse | null> =>
+    invoke<JunkCategoryFilesResponse | null>('junk_file_category_files', {
+      scanId,
+      fileType,
+      offset,
+      limit,
+    }),
 };

@@ -2,6 +2,14 @@ use std::path::{Path, PathBuf};
 use crate::models::RiskLevel;
 use crate::utils::path::SystemPaths;
 
+pub const DEFAULT_PROTECTED_EXTENSIONS: &[&str] = &[
+    "sys", "dll", "exe", "bat", "cmd", "reg", "ini", "drv"
+];
+
+pub const DEFAULT_SENSITIVE_PATTERNS: &[&str] = &[
+    "password", "credential", "secret", "key", "token", "wallet", "backup"
+];
+
 #[derive(Debug, Clone)]
 pub struct SafetyCheckResult {
     pub safe_to_delete: bool,
@@ -111,28 +119,11 @@ impl SafetyChecker {
     }
 
     fn get_default_protected_extensions() -> Vec<String> {
-        vec![
-            "sys".to_string(),
-            "dll".to_string(),
-            "exe".to_string(),
-            "bat".to_string(),
-            "cmd".to_string(),
-            "reg".to_string(),
-            "ini".to_string(),
-            "drv".to_string(),
-        ]
+        DEFAULT_PROTECTED_EXTENSIONS.iter().map(|s| s.to_string()).collect()
     }
 
     fn get_default_sensitive_patterns() -> Vec<String> {
-        vec![
-            "password".to_string(),
-            "credential".to_string(),
-            "secret".to_string(),
-            "key".to_string(),
-            "token".to_string(),
-            "wallet".to_string(),
-            "backup".to_string(),
-        ]
+        DEFAULT_SENSITIVE_PATTERNS.iter().map(|s| s.to_string()).collect()
     }
 
     pub fn add_protected_path(&mut self, path: PathBuf) {

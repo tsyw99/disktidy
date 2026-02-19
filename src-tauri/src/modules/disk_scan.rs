@@ -6,7 +6,6 @@
 //! - 批量处理减少锁竞争
 
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -46,7 +45,6 @@ impl ScanProgressTrait for ScanProgress {
     }
 }
 
-/// 全局扫描管理器
 lazy_static::lazy_static! {
     static ref SCAN_MANAGER: ScanManager<ScanProgress, ScanResult> = ScanManager::new();
     static ref SCAN_FULL_CATEGORIES: std::sync::Arc<tokio::sync::RwLock<HashMap<String, HashMap<String, FullFileCategory>>>> = 
@@ -129,6 +127,35 @@ async fn perform_scan(
     let mut full_categories: HashMap<String, FullFileCategory> = HashMap::new();
 
     for path_str in &scan_paths {
+        // 检查是否取消
+        if *ctx.cancel_receiver.borrow() {
+            result.status = ScanStatus::Cancelled;
+            return Ok(result);
+        }
+
+        // 检查是否暂停
+        while *ctx.pause_receiver.borrow() {
+            let progress = ScanProgress {
+                scan_id: ctx.scan_id.clone(),
+                current_path: path_str.clone(),
+                scanned_files: total_files,
+                scanned_size: total_size,
+                percent: 0.0,
+                speed: 0.0,
+                status: ScanStatus::Paused,
+                ..ctx.progress.clone()
+            };
+            let _ = ctx.app.emit(EVENT_SCAN_PROGRESS, &progress);
+            
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            
+            // 暂停期间检查是否取消
+            if *ctx.cancel_receiver.borrow() {
+                result.status = ScanStatus::Cancelled;
+                return Ok(result);
+            }
+        }
+
         let path = Path::new(path_str);
         if !path.exists() {
             current_path_index += 1;

@@ -6,14 +6,10 @@ import type { FileClassificationResult, FileClassificationOptions } from '../typ
  * 这些配置是固定的，不受用户系统设置影响
  */
 export const OPTIMIZED_CLASSIFICATION_CONFIG: FileClassificationOptions = {
-  max_depth: 8,
+  max_depth: undefined,
   include_hidden: true,
   include_system: false,
   exclude_paths: [
-    'Windows',
-    'Program Files',
-    'Program Files (x86)',
-    'ProgramData',
     '$Recycle.Bin',
     'System Volume Information',
     'Config.Msi',
@@ -22,7 +18,7 @@ export const OPTIMIZED_CLASSIFICATION_CONFIG: FileClassificationOptions = {
     'hiberfil.sys',
     'swapfile.sys',
   ],
-  max_files: 200000,
+  max_files: undefined,
   top_n_categories: 20,
 };
 

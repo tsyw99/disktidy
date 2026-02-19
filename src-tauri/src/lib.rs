@@ -61,6 +61,7 @@ pub fn run() {
             commands::file_analyzer::junk_file_scan_progress,
             commands::file_analyzer::junk_file_scan_result,
             commands::file_analyzer::junk_file_scan_clear,
+            commands::file_analyzer::junk_file_category_files,
             commands::settings::settings_get,
             commands::settings::settings_update,
             commands::settings::settings_update_partial,

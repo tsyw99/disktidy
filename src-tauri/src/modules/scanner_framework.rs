@@ -14,8 +14,6 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::{watch, RwLock};
 use walkdir::{DirEntry, WalkDir};
 
-use rayon::prelude::*;
-
 #[cfg(windows)]
 use std::os::windows::fs::MetadataExt;
 
@@ -339,13 +337,6 @@ impl<
         tokio::spawn(async move {
             match scan_fn(context).await {
                 Ok(result) => {
-                    // 更新进度为完成
-                    let mut store = progress_store.write().await;
-                    if let Some(progress) = store.get_mut(&scan_id_clone) {
-                        progress.set_status(ScanStatus::Completed);
-                        let _ = app.emit(P::event_name(), progress.clone());
-                    }
-
                     // 存储结果
                     result_store
                         .write()
@@ -494,72 +485,6 @@ impl ParallelFileProcessor {
             .filter_map(|path| processor(path))
             .collect()
     }
-
-    /// 批量处理文件元数据
-    pub fn batch_process_metadata<T, F>(
-        entries: &[DirEntry],
-        batch_size: usize,
-        processor: F,
-    ) -> Vec<T>
-    where
-        F: Fn(&DirEntry) -> Option<T> + Sync,
-        T: Send,
-    {
-        use rayon::prelude::*;
-
-        entries
-            .par_chunks(batch_size)
-            .flat_map(|chunk| {
-                chunk
-                    .iter()
-                    .filter_map(|e| processor(e))
-                    .collect::<Vec<_>>()
-            })
-            .collect()
-    }
-}
-
-/// 性能优化的文件缓存
-pub struct FileMetadataCache {
-    cache: RwLock<HashMap<PathBuf, std::fs::Metadata>>,
-}
-
-impl FileMetadataCache {
-    pub fn new() -> Self {
-        Self {
-            cache: RwLock::new(HashMap::new()),
-        }
-    }
-
-    pub async fn get_metadata(&self, path: &Path) -> Option<std::fs::Metadata> {
-        // 先尝试从缓存读取
-        {
-            let cache = self.cache.read().await;
-            if let Some(metadata) = cache.get(path) {
-                return Some(metadata.clone());
-            }
-        }
-
-        // 缓存未命中，读取文件系统
-        if let Ok(metadata) = std::fs::metadata(path) {
-            let mut cache = self.cache.write().await;
-            cache.insert(path.to_path_buf(), metadata.clone());
-            Some(metadata)
-        } else {
-            None
-        }
-    }
-
-    pub async fn clear(&self) {
-        let mut cache = self.cache.write().await;
-        cache.clear();
-    }
-}
-
-impl Default for FileMetadataCache {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 /// 扫描统计信息
@@ -626,6 +551,21 @@ pub mod error_handling {
         error_str.contains("拒绝访问")
             || error_str.contains("access is denied")
             || error_str.contains("permission denied")
+            || error_str.contains("not found")
+            || error_str.contains("找不到")
+    }
+
+    /// 检查错误是否是可恢复的（可以继续扫描）
+    pub fn is_recoverable_error(error: &walkdir::Error) -> bool {
+        is_permission_error(error)
+            || error.io_error().map(|e| e.kind()).map_or(false, |kind| {
+                matches!(
+                    kind,
+                    std::io::ErrorKind::NotFound
+                        | std::io::ErrorKind::PermissionDenied
+                        | std::io::ErrorKind::Other
+                )
+            })
     }
 
     /// 安全的目录遍历，自动跳过权限错误

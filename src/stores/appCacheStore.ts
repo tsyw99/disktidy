@@ -51,7 +51,6 @@ interface AppCacheState {
     deleteSelectedFiles: () => Promise<CleanResult | null>;
     clearError: () => void;
     getSelectedCount: () => number;
-    getSelectedSize: () => number;
     isAppConfigured: (app: AppType) => boolean;
     hasAnyConfiguredApp: () => boolean;
   };
@@ -393,19 +392,6 @@ export const useAppCacheStore = create<AppCacheState>()(
         clearError: () => set({ error: null }),
 
         getSelectedCount: () => get().selectedFiles.size,
-
-        getSelectedSize: () => {
-          const { result, selectedFiles } = get();
-          if (!result) return 0;
-
-          let totalSize = 0;
-          for (const file of result.files) {
-            if (selectedFiles.has(file.path)) {
-              totalSize += file.size;
-            }
-          }
-          return totalSize;
-        },
 
         isAppConfigured: (app: AppType) => {
           const { configuredApps } = get();
