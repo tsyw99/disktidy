@@ -30,6 +30,10 @@ export const agentService = {
   status: (): Promise<AgentStatusResponse> =>
     invoke<AgentStatusResponse>('agent_status'),
 
+  /** 强制重置 is_executing 标志（修复卡死状态） */
+  resetExecuting: (): Promise<void> =>
+    invoke<void>('agent_reset_executing'),
+
   /** 测试 AI 连接 */
   testConnection: (): Promise<TestConnectionResponse> =>
     invoke<TestConnectionResponse>('agent_test_connection'),

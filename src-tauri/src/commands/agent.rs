@@ -3,7 +3,32 @@ use tokio::sync::RwLock;
 use tauri::{AppHandle, State};
 use serde::{Deserialize, Serialize};
 
-use crate::modules::agent::{AgentManager, AgentConfig};
+use crate::modules::agent::{AgentManager, AgentConfig, AgentError};
+
+/// 结构化命令错误（包含 error_code，前端可据此分类处理）
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentCommandError {
+    pub error_code: String,
+    pub message: String,
+}
+
+impl From<AgentError> for AgentCommandError {
+    fn from(e: AgentError) -> Self {
+        Self {
+            error_code: e.error_code().to_string(),
+            message: e.to_string(),
+        }
+    }
+}
+
+impl std::fmt::Display for AgentCommandError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Tauri 会将 Err 转为字符串传给前端，用 JSON 格式以便前端解析
+        write!(f, "{}", serde_json::to_string(self).unwrap_or_else(|_| self.message.clone()))
+    }
+}
+
+impl std::error::Error for AgentCommandError {}
 
 /// Agent 状态管理（Tauri 托管状态）
 pub struct AgentState {
@@ -45,13 +70,13 @@ pub struct AgentStatusResponse {
 pub async fn agent_init(
     app: AppHandle,
     state: State<'_, AgentState>,
-) -> Result<AgentStatusResponse, String> {
+) -> Result<AgentStatusResponse, AgentCommandError> {
     let config = AgentConfig::from_settings(&app)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AgentCommandError::from)?;
 
     // 验证配置（API Key 为空时报错）
-    config.validate().map_err(|e| e.to_string())?;
+    config.validate().map_err(AgentCommandError::from)?;
 
     let manager = AgentManager::new(app, config);
     let is_executing = manager.is_executing();
@@ -75,7 +100,7 @@ pub async fn agent_chat(
     app: AppHandle,
     state: State<'_, AgentState>,
     request: AgentChatRequest,
-) -> Result<AgentChatResponse, String> {
+) -> Result<AgentChatResponse, AgentCommandError> {
     // 确保已初始化
     {
         let guard = state.manager.read().await;
@@ -86,14 +111,17 @@ pub async fn agent_chat(
     }
 
     let guard = state.manager.read().await;
-    let manager = guard.as_ref().ok_or("Agent 未初始化")?;
+    let manager = guard.as_ref().ok_or_else(|| AgentCommandError {
+        error_code: "NOT_INITIALIZED".to_string(),
+        message: "Agent 未初始化".to_string(),
+    })?;
 
     match manager.chat(&request.message).await {
         Ok(reply) => Ok(AgentChatResponse {
             reply,
             is_executing: false,
         }),
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(AgentCommandError::from(e)),
     }
 }
 
@@ -103,7 +131,7 @@ pub async fn agent_chat_stream(
     app: AppHandle,
     state: State<'_, AgentState>,
     request: AgentChatRequest,
-) -> Result<(), String> {
+) -> Result<(), AgentCommandError> {
     // 确保已初始化
     {
         let guard = state.manager.read().await;
@@ -114,11 +142,16 @@ pub async fn agent_chat_stream(
     }
 
     let guard = state.manager.read().await;
-    let manager = guard.as_ref().ok_or("Agent 未初始化")?;
+    let manager = guard.as_ref().ok_or_else(|| AgentCommandError {
+        error_code: "NOT_INITIALIZED".to_string(),
+        message: "Agent 未初始化".to_string(),
+    })?;
 
     // 使用流式调用 — 事件由 bridge_stream_to_tauri 自动推送
+    // 注意：chat_stream 内部已通过 Tauri 事件发送了带 error_code 的错误事件
+    // 这里返回结构化错误，前端可从中提取 error_code
     manager.chat_stream(&request.message).await
-        .map_err(|e| e.to_string())?;
+        .map_err(AgentCommandError::from)?;
 
     Ok(())
 }
@@ -127,7 +160,7 @@ pub async fn agent_chat_stream(
 #[tauri::command]
 pub async fn agent_clear_context(
     state: State<'_, AgentState>,
-) -> Result<(), String> {
+) -> Result<(), AgentCommandError> {
     let guard = state.manager.read().await;
     if let Some(manager) = guard.as_ref() {
         manager.clear_context().await;
@@ -139,7 +172,7 @@ pub async fn agent_clear_context(
 #[tauri::command]
 pub async fn agent_status(
     state: State<'_, AgentState>,
-) -> Result<AgentStatusResponse, String> {
+) -> Result<AgentStatusResponse, AgentCommandError> {
     let guard = state.manager.read().await;
     match guard.as_ref() {
         Some(manager) => Ok(AgentStatusResponse {
@@ -157,6 +190,18 @@ pub async fn agent_status(
     }
 }
 
+/// 强制重置 is_executing 标志（用于修复卡死状态）
+#[tauri::command]
+pub async fn agent_reset_executing(
+    state: State<'_, AgentState>,
+) -> Result<(), AgentCommandError> {
+    let guard = state.manager.read().await;
+    if let Some(manager) = guard.as_ref() {
+        manager.force_reset_executing();
+    }
+    Ok(())
+}
+
 /// 测试 AI 连接
 #[derive(Serialize)]
 pub struct TestConnectionResponse {
@@ -167,10 +212,10 @@ pub struct TestConnectionResponse {
 #[tauri::command]
 pub async fn agent_test_connection(
     app: AppHandle,
-) -> Result<TestConnectionResponse, String> {
+) -> Result<TestConnectionResponse, AgentCommandError> {
     let config = AgentConfig::from_settings(&app)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AgentCommandError::from)?;
 
     // 验证配置
     if let Err(e) = config.validate() {
@@ -186,7 +231,10 @@ pub async fn agent_test_connection(
         .api_key(&config.api_key)
         .base_url(&base_url)
         .build()
-        .map_err(|e| format!("创建客户端失败: {}", e))?;
+        .map_err(|e| AgentCommandError {
+            error_code: "CONFIG_ERROR".to_string(),
+            message: format!("创建客户端失败: {}", e),
+        })?;
 
     // 用简单对话请求验证 API Key 和 URL 是否有效
     use rig_core::client::completion::CompletionClient;

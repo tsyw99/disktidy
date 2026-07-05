@@ -7,6 +7,26 @@ import {
 } from '../types/agent';
 import { agentService } from '../services/agentService';
 
+/**
+ * 从 Tauri invoke 错误中提取结构化错误码和消息
+ * 后端 AgentCommandError 以 JSON 字符串格式返回: {"error_code":"XXX","message":"..."}
+ */
+function parseCommandError(e: unknown): { errorCode: string; message: string } {
+  const errorStr = String(e);
+  try {
+    const parsed = JSON.parse(errorStr);
+    if (parsed && typeof parsed.error_code === 'string') {
+      return {
+        errorCode: parsed.error_code,
+        message: parsed.message || errorStr,
+      };
+    }
+  } catch {
+    // 不是 JSON，回退到纯文本
+  }
+  return { errorCode: 'UNKNOWN', message: errorStr };
+}
+
 interface StreamEvent {
   type: string;
   message_id: string;
@@ -85,9 +105,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       });
       await get()._setupListener();
     } catch (e) {
+      const { errorCode, message } = parseCommandError(e);
       set({
-        error: String(e),
-        errorCode: 'CONFIG_ERROR',
+        error: message,
+        errorCode,
         isLoading: false,
       });
     }
@@ -125,9 +146,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         isLoading: false,
       }));
     } catch (e) {
+      const { errorCode, message } = parseCommandError(e);
       set({
-        error: String(e),
-        errorCode: 'UNKNOWN',
+        error: message,
+        errorCode,
         isLoading: false,
       });
     }
@@ -159,14 +181,41 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     try {
       await agentService.chatStream(content);
     } catch (e) {
-      const errorStr = String(e);
-      set({
-        error: errorStr,
-        errorCode: 'UNKNOWN',
-        isLoading: false,
-        isStreaming: false,
-        lastFailedMessage: content,
-      });
+      // 仅在流式事件处理器尚未处理错误时才设置错误状态
+      // 流式事件的 error 类型已在 handleStreamEvent 中处理
+      // 如果 handleStreamEvent 已处理（此时 isStreaming 已被设为 false），则不覆盖
+      const currentState = get();
+      if (currentState.isStreaming) {
+        // 流式事件未处理错误，使用 invoke 错误
+        const { errorCode, message } = parseCommandError(e);
+        set({
+          error: message,
+          errorCode,
+          isLoading: false,
+          isStreaming: false,
+          lastFailedMessage: content,
+        });
+
+        // 如果是 TASK_IN_PROGRESS 错误，自动重置后端卡死状态
+        if (errorCode === 'TASK_IN_PROGRESS') {
+          try {
+            await agentService.resetExecuting();
+            // 重置后更新错误提示
+            set({
+              error: '之前的任务异常终止，已自动重置。请重新发送消息。',
+              errorCode: 'TASK_IN_PROGRESS',
+            });
+          } catch {
+            // 重置失败，忽略
+          }
+        }
+      } else {
+        // 流式事件已处理，仅保存 lastFailedMessage 以支持重试
+        const { errorCode } = parseCommandError(e);
+        set({
+          lastFailedMessage: errorCode !== 'TASK_IN_PROGRESS' ? content : null,
+        });
+      }
     }
   },
 
@@ -287,7 +336,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         lastFailedMessage: null,
       });
     } catch (e) {
-      set({ error: String(e), errorCode: 'CONTEXT_ERROR' });
+      const { errorCode, message } = parseCommandError(e);
+      set({ error: message, errorCode });
     }
   },
 

@@ -29,6 +29,40 @@ const RETRY_DELAY_MS: u64 = 1000;
 /// 最大连续失败次数
 const MAX_CONSECUTIVE_FAILURES: u32 = 3;
 
+/// is_executing 标志的 RAII 守卫
+/// 确保即使发生 panic 或 future 被 cancel，标志也会被重置
+struct ExecutingGuard {
+    flag: Arc<AtomicBool>,
+}
+
+impl ExecutingGuard {
+    fn new(flag: Arc<AtomicBool>) -> Option<Self> {
+        // 使用 compare_exchange 确保原子性地检查并设置
+        match flag.compare_exchange(
+            false, // 期望当前值为 false
+            true,  // 设置为 true
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            Ok(_) => {
+                debug!("is_executing 标志已设置 (guard 创建)");
+                Some(Self { flag })
+            }
+            Err(_) => {
+                warn!("is_executing 标志已被占用，无法创建 guard");
+                None
+            }
+        }
+    }
+}
+
+impl Drop for ExecutingGuard {
+    fn drop(&mut self) {
+        self.flag.store(false, Ordering::SeqCst);
+        debug!("is_executing 标志已重置 (guard 释放)");
+    }
+}
+
 pub struct AgentManager {
     app: AppHandle,
     config: Arc<RwLock<AgentConfig>>,
@@ -58,6 +92,14 @@ impl AgentManager {
         self.is_executing.load(Ordering::SeqCst)
     }
 
+    /// 强制重置 is_executing 标志（用于前端修复卡死状态）
+    pub fn force_reset_executing(&self) {
+        if self.is_executing.load(Ordering::SeqCst) {
+            warn!("强制重置 is_executing 标志（可能之前任务异常终止）");
+            self.is_executing.store(false, Ordering::SeqCst);
+        }
+    }
+
     pub async fn model_name(&self) -> String {
         self.config.read().await.model.clone()
     }
@@ -85,29 +127,33 @@ impl AgentManager {
 
     /// 非流式对话
     pub async fn chat(&self, user_input: &str) -> Result<String, AgentError> {
-        if self.is_executing.load(Ordering::SeqCst) {
-            warn!("尝试在任务执行中发起新对话");
-            return Err(AgentError::TaskInProgress);
-        }
+        // 使用 RAII guard 确保 is_executing 在任何退出路径下都会被重置
+        let _guard = match ExecutingGuard::new(self.is_executing.clone()) {
+            Some(g) => g,
+            None => {
+                warn!("尝试在任务执行中发起新对话");
+                return Err(AgentError::TaskInProgress);
+            }
+        };
 
-        self.is_executing.store(true, Ordering::SeqCst);
         info!("开始非流式对话: {}", truncate_for_log(user_input));
 
         let result = self.execute_with_retry(|| self.execute_chat(user_input)).await;
-
-        self.is_executing.store(false, Ordering::SeqCst);
 
         self.handle_result(result, user_input).await
     }
 
     /// 流式对话（通过 Tauri 事件推送）
     pub async fn chat_stream(&self, user_input: &str) -> Result<String, AgentError> {
-        if self.is_executing.load(Ordering::SeqCst) {
-            warn!("尝试在任务执行中发起流式对话");
-            return Err(AgentError::TaskInProgress);
-        }
+        // 使用 RAII guard 确保 is_executing 在任何退出路径下都会被重置
+        let _guard = match ExecutingGuard::new(self.is_executing.clone()) {
+            Some(g) => g,
+            None => {
+                warn!("尝试在任务执行中发起流式对话");
+                return Err(AgentError::TaskInProgress);
+            }
+        };
 
-        self.is_executing.store(true, Ordering::SeqCst);
         info!("开始流式对话: {}", truncate_for_log(user_input));
 
         let message_id = uuid::Uuid::new_v4().to_string();
@@ -124,7 +170,7 @@ impl AgentManager {
             self.execute_chat_stream(user_input, &message_id)
         }).await;
 
-        self.is_executing.store(false, Ordering::SeqCst);
+        // _guard 在此作用域结束时 Drop，自动重置 is_executing = false
 
         match result {
             Ok(response) => {

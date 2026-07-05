@@ -117,6 +117,7 @@ pub fn run() {
             commands::agent::agent_chat_stream,
             commands::agent::agent_clear_context,
             commands::agent::agent_status,
+            commands::agent::agent_reset_executing,
             commands::agent::agent_test_connection,
         ])
         .run(tauri::generate_context!())
