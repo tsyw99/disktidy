@@ -8,6 +8,7 @@ edition = "2021"
 [lib]
 name = "disktidy_lib"
 path = "src/lib.rs"
+crate-type = ["staticlib", "rlib"]
 
 [[bin]]
 name = "disktidy"
