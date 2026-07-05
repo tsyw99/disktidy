@@ -1,5 +1,5 @@
 export const APP_NAME = 'DiskTidy';
-export const APP_VERSION = '1.0.1 测试版';
+export const APP_VERSION = '2.0.1';
 
 export const SCAN_MODES = {
   QUICK: 'quick',
