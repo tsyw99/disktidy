@@ -1,0 +1,9 @@
+# 项目级 Rust 构建配置
+# 1. 覆盖全局 prefer-dynamic 设置，确保 Rust 标准库静态链接
+#    否则 exe 会依赖 std-*.dll，而 NSIS 安装包不会包含该 DLL
+# 2. Windows 发布包静态链接 C 运行时，避免目标机缺少 VC++ Redistributable
+[build]
+rustflags = []
+
+[target.'cfg(windows)']
+rustflags = ["-C", "target-feature=+crt-static"]
