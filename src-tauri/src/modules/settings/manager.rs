@@ -125,6 +125,24 @@ impl SettingsManager {
         if let Some(theme) = updates.theme {
             settings.theme = theme;
         }
+        if let Some(ai_provider) = updates.ai_provider {
+            settings.ai_provider = ai_provider;
+        }
+        if let Some(ai_api_key) = updates.ai_api_key {
+            settings.ai_api_key = ai_api_key;
+        }
+        if let Some(ai_model) = updates.ai_model {
+            settings.ai_model = ai_model;
+        }
+        if let Some(ai_base_url) = updates.ai_base_url {
+            settings.ai_base_url = ai_base_url;
+        }
+        if let Some(ai_max_tokens) = updates.ai_max_tokens {
+            settings.ai_max_tokens = ai_max_tokens;
+        }
+        if let Some(ai_temperature) = updates.ai_temperature {
+            settings.ai_temperature = ai_temperature;
+        }
 
         let result = settings.clone();
         drop(settings);
@@ -281,6 +299,12 @@ pub struct SettingsUpdate {
     pub show_notifications: Option<bool>,
     pub language: Option<String>,
     pub theme: Option<String>,
+    pub ai_provider: Option<String>,
+    pub ai_api_key: Option<String>,
+    pub ai_model: Option<String>,
+    pub ai_base_url: Option<String>,
+    pub ai_max_tokens: Option<u32>,
+    pub ai_temperature: Option<f32>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

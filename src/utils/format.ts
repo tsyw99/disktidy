@@ -53,3 +53,21 @@ export function formatDuration(ms: number): string {
     return `${seconds}s`;
   }
 }
+
+export function formatShortTime(timestamp: number): string {
+  if (!timestamp || timestamp <= 0 || !Number.isFinite(timestamp)) {
+    return '--:--';
+  }
+  try {
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) {
+      return '--:--';
+    }
+    return date.toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '--:--';
+  }
+}

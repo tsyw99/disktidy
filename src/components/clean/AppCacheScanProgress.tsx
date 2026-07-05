@@ -1,11 +1,11 @@
 import { motion } from 'framer-motion';
 import { FileText, FolderOpen, Pause, Loader2 } from 'lucide-react';
-import type { AppCacheScanProgress, AppCacheScanStatus } from '../../types';
+import type { AppCacheScanProgress as AppCacheScanProgressType, AppCacheScanStatus } from '../../types';
 import { formatBytes } from '../../utils/format';
 import { ProgressBar } from '../common';
 
 interface AppCacheScanProgressProps {
-  progress: AppCacheScanProgress | null;
+  progress: AppCacheScanProgressType | null;
   status: AppCacheScanStatus;
 }
 

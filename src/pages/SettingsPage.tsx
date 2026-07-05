@@ -1,18 +1,24 @@
 import { useState } from 'react';
-import { Settings, Sun, Moon, Monitor, HardDrive, Trash2, Shield, Bell, FolderX, FileCheck, AlertTriangle, Construction, Info, Github, User, X, FolderOpen } from 'lucide-react';
+import { Settings, Sun, Moon, Monitor, HardDrive, Trash2, Shield, Bell, FolderX, FileCheck, AlertTriangle, Construction, Info, Github, User, X, FolderOpen, Bot, Eye, EyeOff, Wifi, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useUIStore, useSettingsStore, useSettingsActions } from '../stores';
 import { Modal } from '../components/common';
 import { APP_VERSION } from '../utils/constants';
+import { agentService } from '../services/agentService';
+import { settingsService } from '../services/settingsService';
 
 function SettingsPage() {
   const theme = useUIStore((state) => state.theme);
   const { toggleTheme } = useUIStore((state) => state.actions);
   
   const scanSettings = useSettingsStore((state) => state.scanSettings);
-  const { setScanSettings, addExcludePath, removeExcludePath } = useSettingsActions();
+  const aiSettings = useSettingsStore((state) => state.aiSettings);
+  const { setScanSettings, addExcludePath, removeExcludePath, setAiSettings, resetAiSettings } = useSettingsActions();
 
   const [activeModal, setActiveModal] = useState<string | null>(null);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const closeModal = () => {
     setActiveModal(null);
@@ -44,6 +50,28 @@ function SettingsPage() {
   const handleSaveScanSettings = () => {
     // 设置已通过响应式更新保存到 store，这里只需关闭弹窗
     closeModal();
+  };
+
+  const handleTestConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      // 先同步设置到后端
+      await settingsService.updatePartial({
+        ai_provider: aiSettings.provider,
+        ai_api_key: aiSettings.apiKey,
+        ai_model: aiSettings.model,
+        ai_base_url: aiSettings.baseUrl,
+        ai_max_tokens: aiSettings.maxTokens,
+        ai_temperature: aiSettings.temperature,
+      });
+      const result = await agentService.testConnection();
+      setTestResult({ success: result.success, message: result.message });
+    } catch (e) {
+      setTestResult({ success: false, message: String(e) });
+    } finally {
+      setTesting(false);
+    }
   };
 
   return (
@@ -102,6 +130,12 @@ function SettingsPage() {
           </h2>
           
           <div className="space-y-3">
+            <SettingItem
+              icon={<Bot className="w-5 h-5" />}
+              title="AI 助手"
+              description={`${aiSettings.provider} / ${aiSettings.model}`}
+              onClick={() => setActiveModal('aiSettings')}
+            />
             <SettingItem
               icon={<HardDrive className="w-5 h-5" />}
               title="磁盘扫描设置"
@@ -406,6 +440,146 @@ function SettingsPage() {
         </div>
       </Modal>
 
+      <Modal
+        visible={activeModal === 'aiSettings'}
+        onClose={closeModal}
+        title="AI 助手设置"
+        size={{ width: 520, maxWidth: '90vw' }}
+        animation={{ type: 'scale', duration: 0.25 }}
+        overlay={{ opacity: 0.6, blur: true }}
+        buttons={[
+          { text: '重置', onClick: () => { resetAiSettings(); closeModal(); }, variant: 'ghost' },
+          { text: '关闭', onClick: closeModal, variant: 'secondary' },
+        ]}
+      >
+        <div className="space-y-4">
+          <div className="p-4 rounded-lg bg-[var(--bg-secondary)]">
+            <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">LLM 提供商</h4>
+            <select
+              value={aiSettings.provider}
+              onChange={(e) => { setAiSettings({ provider: e.target.value }); setTestResult(null); }}
+              className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border-color)] select-custom"
+            >
+              <option value="deepseek">DeepSeek</option>
+              <option value="openai_compatible">OpenAI 兼容</option>
+              <option value="glm">ChatGLM（智谱）</option>
+              <option value="kimi">Kimi（月之暗面）</option>
+            </select>
+          </div>
+
+          <div className="p-4 rounded-lg bg-[var(--bg-secondary)]">
+            <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">API Key</h4>
+            <div className="relative">
+              <input
+                type={showApiKey ? 'text' : 'password'}
+                value={aiSettings.apiKey}
+                onChange={(e) => { setAiSettings({ apiKey: e.target.value }); setTestResult(null); }}
+                placeholder="输入 API Key..."
+                className="w-full px-3 py-2 pr-10 text-sm rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                title={showApiKey ? '隐藏 API Key' : '显示 API Key'}
+              >
+                {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-xs text-[var(--text-tertiary)] mt-1">
+              API Key 将安全存储在你的本地配置文件中
+            </p>
+          </div>
+
+          <div className="p-4 rounded-lg bg-[var(--bg-secondary)]">
+            <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">模型名称</h4>
+            <input
+              type="text"
+              value={aiSettings.model}
+              onChange={(e) => { setAiSettings({ model: e.target.value }); setTestResult(null); }}
+              placeholder="如 deepseek-chat..."
+              className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+            />
+          </div>
+
+          {aiSettings.provider === 'openai_compatible' && (
+            <div className="p-4 rounded-lg bg-[var(--bg-secondary)]">
+              <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">Base URL</h4>
+              <input
+                type="text"
+                value={aiSettings.baseUrl}
+                onChange={(e) => { setAiSettings({ baseUrl: e.target.value }); setTestResult(null); }}
+                placeholder="如 https://api.openai.com/v1..."
+                className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-4 rounded-lg bg-[var(--bg-secondary)]">
+              <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">最大 Token</h4>
+              <input
+                type="number"
+                value={aiSettings.maxTokens}
+                onChange={(e) => { setAiSettings({ maxTokens: Number(e.target.value) }); setTestResult(null); }}
+                className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              />
+            </div>
+            <div className="p-4 rounded-lg bg-[var(--bg-secondary)]">
+              <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">温度</h4>
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                max="2"
+                value={aiSettings.temperature}
+                onChange={(e) => { setAiSettings({ temperature: Number(e.target.value) }); setTestResult(null); }}
+                className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              />
+            </div>
+          </div>
+
+          {/* 测试结果 */}
+          {testResult && (
+            <div
+              className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
+                testResult.success
+                  ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800'
+                  : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
+              }`}
+            >
+              {testResult.success ? (
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+              ) : (
+                <XCircle className="w-4 h-4 flex-shrink-0" />
+              )}
+              <span className="break-words">{testResult.message}</span>
+            </div>
+          )}
+
+          {/* 测试连接按钮 */}
+          <button
+            onClick={handleTestConnection}
+            disabled={testing || !aiSettings.apiKey.trim()}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {testing ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Wifi className="w-4 h-4" />
+            )}
+            测试连接
+          </button>
+
+          <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <p className="text-xs text-blue-600 dark:text-blue-400">
+              提示：修改 AI 设置后，需要重新连接 AI 助手才能生效。支持 DeepSeek、GLM、Kimi 等主流大模型。
+            </p>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 免责声明 */}
       <Modal
         visible={activeModal === 'disclaimer'}
         onClose={closeModal}

@@ -1,4 +1,4 @@
-export type PageType = 'system' | 'scan' | 'clean' | 'analyze' | 'tools' | 'settings';
+export type PageType = 'system' | 'scan' | 'clean' | 'analyze' | 'tools' | 'settings' | 'agent';
 
 export * from './system';
 export * from './scan';
@@ -8,4 +8,4 @@ export * from './settings';
 export * from './error';
 export * from './appCache';
 export * from './fileClassifier';
-export * from './softwareResidue';
+export * from './agent';

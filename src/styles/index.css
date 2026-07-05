@@ -632,3 +632,180 @@ body {
 .dark .panel:hover {
   border-color: rgba(139, 92, 246, 0.4);
 }
+
+/* ============================================
+   Markdown 渲染样式
+   ============================================ */
+.markdown-body {
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--text-primary);
+}
+
+.markdown-body .md-heading {
+  font-weight: 600;
+  margin: 0.75em 0 0.5em 0;
+  line-height: 1.4;
+}
+
+.markdown-body .md-h1 {
+  font-size: 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.3em;
+}
+
+.markdown-body .md-h2 {
+  font-size: 1.1rem;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.25em;
+}
+
+.markdown-body .md-h3 {
+  font-size: 1rem;
+}
+
+.markdown-body .md-h4,
+.markdown-body .md-h5,
+.markdown-body .md-h6 {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.markdown-body .md-paragraph {
+  margin: 0.4em 0;
+}
+
+.markdown-body .md-bold {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.markdown-body .md-italic {
+  font-style: italic;
+}
+
+.markdown-body .md-inline-code {
+  background: rgba(99, 102, 241, 0.1);
+  color: #e11d48;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 0.85em;
+}
+
+.dark .md-inline-code {
+  background: rgba(139, 92, 246, 0.15);
+  color: #f472b6;
+}
+
+.markdown-body pre {
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.75em 1em;
+  margin: 0.5em 0;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.dark .markdown-body pre {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.markdown-body pre code {
+  background: none;
+  color: var(--text-primary);
+  padding: 0;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.markdown-body .md-list {
+  margin: 0.4em 0;
+  padding-left: 1.5em;
+}
+
+.markdown-body .md-ordered {
+  list-style-type: decimal;
+}
+
+.markdown-body .md-list li {
+  margin: 0.2em 0;
+}
+
+.markdown-body .md-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.8rem;
+}
+
+.markdown-body .md-table th {
+  background: rgba(99, 102, 241, 0.08);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.4em 0.75em;
+  border: 1px solid var(--border-color);
+}
+
+.markdown-body .md-table td {
+  padding: 0.35em 0.75em;
+  border: 1px solid var(--border-color);
+}
+
+.dark .markdown-body .md-table th {
+  background: rgba(139, 92, 246, 0.12);
+}
+
+.markdown-body .md-table tr:nth-child(even) td {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.dark .markdown-body .md-table tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.markdown-body .md-hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 0.75em 0;
+}
+
+.markdown-body .md-link {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-body .md-link:hover {
+  color: var(--color-primary-light);
+}
+
+/* ============================================
+   Select 下拉框统一样式
+   ============================================ */
+.select-custom {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+  cursor: pointer;
+}
+
+.select-custom:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.dark .select-custom:focus {
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+}
+
+.select-custom option {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}

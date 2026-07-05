@@ -7,14 +7,26 @@ export interface ScanSettings {
   includeSystem: boolean;
 }
 
+export interface AiSettings {
+  provider: string;
+  apiKey: string;
+  model: string;
+  baseUrl: string;
+  maxTokens: number;
+  temperature: number;
+}
+
 interface SettingsState {
   scanSettings: ScanSettings;
-  
+  aiSettings: AiSettings;
+
   actions: {
     setScanSettings: (settings: Partial<ScanSettings>) => void;
     addExcludePath: (path: string) => void;
     removeExcludePath: (path: string) => void;
     resetScanSettings: () => void;
+    setAiSettings: (settings: Partial<AiSettings>) => void;
+    resetAiSettings: () => void;
   };
 }
 
@@ -29,11 +41,21 @@ const defaultScanSettings: ScanSettings = {
   includeSystem: false,
 };
 
+const defaultAiSettings: AiSettings = {
+  provider: 'deepseek',
+  apiKey: '',
+  model: 'deepseek-chat',
+  baseUrl: '',
+  maxTokens: 4096,
+  temperature: 0.7,
+};
+
 export const useSettingsStore = create<SettingsState>()(
   devtools(
     persist(
       (set, get) => ({
         scanSettings: { ...defaultScanSettings },
+        aiSettings: { ...defaultAiSettings },
 
         actions: {
           setScanSettings: (settings) => {
@@ -67,11 +89,24 @@ export const useSettingsStore = create<SettingsState>()(
           resetScanSettings: () => {
             set({ scanSettings: { ...defaultScanSettings } });
           },
+
+          setAiSettings: (settings) => {
+            set((state) => ({
+              aiSettings: { ...state.aiSettings, ...settings },
+            }));
+          },
+
+          resetAiSettings: () => {
+            set({ aiSettings: { ...defaultAiSettings } });
+          },
         },
       }),
       {
         name: 'settings-store',
-        partialize: (state) => ({ scanSettings: state.scanSettings }),
+        partialize: (state) => ({
+          scanSettings: state.scanSettings,
+          aiSettings: state.aiSettings,
+        }),
       }
     ),
     { name: 'settings-store' }

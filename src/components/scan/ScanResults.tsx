@@ -110,25 +110,18 @@ export default function ScanResults({
   onCollapseAll,
 }: ScanResultsProps) {
   const [helpModalVisible, setHelpModalVisible] = useState(false);
-
-  if (!result) {
-    return null;
-  }
-
-  const hasFiles = result.total_files > 0;
-  const selectedCount = selectedFiles.size;
   const selectedSize = useScanStore((state) => state.actions.getSelectedSize());
 
   const categoryInfoList = useMemo(() => {
-    return result.categories.map(cat => ({
+    return result?.categories.map(cat => ({
       name: cat.name,
       displayName: cat.display_name,
       description: cat.description || '',
-    }));
-  }, [result.categories]);
+    })) ?? [];
+  }, [result?.categories]);
 
   const categories: ScanCategoryInfo[] = useMemo(() => {
-    return result.categories.map(cat => ({
+    return result?.categories.map(cat => ({
       key: cat.name,
       name: cat.name,
       displayName: cat.display_name,
@@ -137,16 +130,16 @@ export default function ScanResults({
       fileCount: cat.file_count,
       totalSize: cat.total_size,
       hasMore: cat.has_more,
-    }));
-  }, [result.categories]);
+    })) ?? [];
+  }, [result?.categories]);
 
   const handleLoadMore = useCallback(async (
-    categoryKey: string, 
-    offset: number, 
+    categoryKey: string,
+    offset: number,
     limit: number
   ) => {
     if (!scanId) return null;
-    
+
     try {
       const response = await scanService.getCategoryFiles(scanId, categoryKey, offset, limit);
       if (response) {
@@ -177,6 +170,13 @@ export default function ScanResults({
       />
     );
   }, []);
+
+  if (!result) {
+    return null;
+  }
+
+  const hasFiles = result.total_files > 0;
+  const selectedCount = selectedFiles.size;
 
   if (!hasFiles) {
     return (

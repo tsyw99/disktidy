@@ -12,6 +12,12 @@ export interface AppSettings {
   show_notifications: boolean;
   language: string;
   theme: string;
+  ai_provider: string;
+  ai_api_key: string;
+  ai_model: string;
+  ai_base_url: string;
+  ai_max_tokens: number;
+  ai_temperature: number;
 }
 
 export interface CleanRule {
@@ -32,6 +38,12 @@ export interface SettingsUpdate {
   show_notifications?: boolean;
   language?: string;
   theme?: string;
+  ai_provider?: string;
+  ai_api_key?: string;
+  ai_model?: string;
+  ai_base_url?: string;
+  ai_max_tokens?: number;
+  ai_temperature?: number;
 }
 
 export interface CleanRuleInput {
@@ -50,4 +62,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   show_notifications: true,
   language: 'zh-CN',
   theme: 'dark',
+  ai_provider: 'deepseek',
+  ai_api_key: '',
+  ai_model: 'deepseek-chat',
+  ai_base_url: '',
+  ai_max_tokens: 4096,
+  ai_temperature: 0.7,
 };

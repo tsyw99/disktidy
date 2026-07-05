@@ -5,3 +5,4 @@ export { default as LargeFilePage } from './LargeFilePage';
 export { default as FileAnalysisPage } from './FileAnalysisPage';
 export { default as ToolsPage } from './ToolsPage/index';
 export { default as SettingsPage } from './SettingsPage';
+export { default as AgentChatPage } from './AgentChatPage';

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Search, Trash2, Settings, FileSearch, Wrench, Loader2 } from 'lucide-react';
+import { LayoutDashboard, Search, Trash2, Settings, FileSearch, Wrench, Bot, Loader2 } from 'lucide-react';
 import { Dock, DockIcon } from '../ui/Dock';
 import { useUIStore } from '../../stores';
 import type { PageType } from '../../types';
@@ -34,6 +34,11 @@ const navItems: NavItem[] = [
     id: 'tools',
     icon: <Wrench className="w-5 h-5" />,
     label: '其他功能',
+  },
+  {
+    id: 'agent',
+    icon: <Bot className="w-5 h-5" />,
+    label: 'AI 助手',
   },
   {
     id: 'settings',

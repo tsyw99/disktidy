@@ -9,6 +9,7 @@ pub mod cancellable_file_classifier;
 pub mod driver_manager;
 pub mod software_residue;
 pub mod scanner_framework;
+pub mod agent;
 
 pub use system_info::*;
 pub use disk_scan::*;

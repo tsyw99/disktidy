@@ -105,10 +105,10 @@ export default function DeleteConfirmModal({
           </motion.div>
         );
         
-      case 'result':
+      case 'result': {
         const success = result && result.cleaned_files > 0;
         const hasFailures = result && result.failed_files > 0;
-        
+
         return (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -185,6 +185,7 @@ export default function DeleteConfirmModal({
             )}
           </motion.div>
         );
+      }
     }
   };
 

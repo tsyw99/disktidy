@@ -47,7 +47,7 @@ export class LargeFileService {
     return invoke<void>('large_file_scan_clear', { scanId });
   }
 
-  async onProgress(callback: (progress: LargeFileScanProgress) => void): Promise<void> {
+  async onProgress(callback: (progress: LargeFileScanProgress) => void): Promise<() => void> {
     if (this.progressUnlistener) {
       this.progressUnlistener();
     }
@@ -56,9 +56,11 @@ export class LargeFileService {
       EVENT_LARGE_FILE_PROGRESS,
       (event) => callback(event.payload)
     );
+    
+    return this.progressUnlistener;
   }
 
-  async onComplete(callback: (result: LargeFileScanResult) => void): Promise<void> {
+  async onComplete(callback: (result: LargeFileScanResult) => void): Promise<() => void> {
     if (this.completeUnlistener) {
       this.completeUnlistener();
     }
@@ -67,6 +69,8 @@ export class LargeFileService {
       EVENT_LARGE_FILE_COMPLETE,
       (event) => callback(event.payload)
     );
+    
+    return this.completeUnlistener;
   }
 
   unsubscribe(): void {

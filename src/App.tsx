@@ -1,12 +1,13 @@
 import { MainLayout } from './components/layout';
-import { NavigationDock, TitleBar } from './components/common';
+import { TitleBar } from './components/common';
 import {
   SystemPage,
   ScanPage,
   CleanPage,
   FileAnalysisPage,
   ToolsPage,
-  SettingsPage
+  SettingsPage,
+  AgentChatPage
 } from './pages';
 import { useUIStore, type UIState } from './stores';
 
@@ -27,6 +28,8 @@ function App() {
         return <ToolsPage />;
       case 'settings':
         return <SettingsPage />;
+      case 'agent':
+        return <AgentChatPage />;
       default:
         return <SystemPage />;
     }
@@ -35,10 +38,7 @@ function App() {
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden">
       <TitleBar />
-      <MainLayout>
-        {renderPage()}
-        <NavigationDock />
-      </MainLayout>
+      <MainLayout>{renderPage()}</MainLayout>
     </div>
   );
 }

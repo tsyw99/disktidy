@@ -14,6 +14,19 @@ pub struct AppSettings {
     pub show_notifications: bool,
     pub language: String,
     pub theme: String,
+    /// AI 助手设置
+    #[serde(default)]
+    pub ai_provider: String,
+    #[serde(default)]
+    pub ai_api_key: String,
+    #[serde(default)]
+    pub ai_model: String,
+    #[serde(default)]
+    pub ai_base_url: String,
+    #[serde(default)]
+    pub ai_max_tokens: u32,
+    #[serde(default)]
+    pub ai_temperature: f32,
 }
 
 impl Default for AppSettings {
@@ -27,6 +40,12 @@ impl Default for AppSettings {
             show_notifications: true,
             language: "zh-CN".to_string(),
             theme: "dark".to_string(),
+            ai_provider: "deepseek".to_string(),
+            ai_api_key: String::new(),
+            ai_model: "deepseek-chat".to_string(),
+            ai_base_url: String::new(),
+            ai_max_tokens: 4096,
+            ai_temperature: 0.7,
         }
     }
 }

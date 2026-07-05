@@ -9,6 +9,7 @@ export { largeFileService } from './largeFileService';
 export { junkFileScanService } from './junkFileScanService';
 export { softwareResidueService } from './softwareResidueService';
 export { driverService } from './driverService';
+export { agentService } from './agentService';
 export {
   optimizedFileClassifier,
   ClassificationValidator,

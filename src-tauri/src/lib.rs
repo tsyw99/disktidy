@@ -15,6 +15,7 @@ pub fn run() {
         .manage(commands::cleaner::CleanManager::new())
         .manage(commands::settings::SettingsState::new())
         .manage(commands::software_residue::ResidueScanState::new())
+        .manage(commands::agent::AgentState::new())
         .invoke_handler(tauri::generate_handler![
             commands::system::system_get_info,
             commands::system::system_get_disks,
@@ -111,6 +112,12 @@ pub fn run() {
             commands::driver::driver_get_list,
             commands::driver::driver_delete,
             commands::driver::driver_get_by_id,
+            commands::agent::agent_init,
+            commands::agent::agent_chat,
+            commands::agent::agent_chat_stream,
+            commands::agent::agent_clear_context,
+            commands::agent::agent_status,
+            commands::agent::agent_test_connection,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

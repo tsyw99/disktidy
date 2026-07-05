@@ -19,6 +19,33 @@ impl SettingsState {
             rule_engine: Arc::new(Mutex::new(RuleEngine::new())),
         }
     }
+
+    /// 获取 AI 助手配置（提供给 Agent 模块使用）
+    pub async fn get_ai_config(&self) -> crate::modules::agent::AgentConfig {
+        let manager = self.manager.lock().await;
+        let settings = manager.get_settings();
+
+        crate::modules::agent::AgentConfig {
+            provider: if settings.ai_provider.is_empty() {
+                "deepseek".to_string()
+            } else {
+                settings.ai_provider
+            },
+            api_key: settings.ai_api_key,
+            model: if settings.ai_model.is_empty() {
+                "deepseek-chat".to_string()
+            } else {
+                settings.ai_model
+            },
+            base_url: if settings.ai_base_url.is_empty() {
+                None
+            } else {
+                Some(settings.ai_base_url)
+            },
+            max_tokens: Some(settings.ai_max_tokens),
+            temperature: Some(settings.ai_temperature),
+        }
+    }
 }
 
 impl Default for SettingsState {
@@ -60,6 +87,12 @@ pub async fn settings_update_partial(
         show_notifications: updates.show_notifications,
         language: updates.language,
         theme: updates.theme,
+        ai_provider: updates.ai_provider,
+        ai_api_key: updates.ai_api_key,
+        ai_model: updates.ai_model,
+        ai_base_url: updates.ai_base_url,
+        ai_max_tokens: updates.ai_max_tokens,
+        ai_temperature: updates.ai_temperature,
     };
     manager.update_settings_partial(update)
         .map_err(|e| format!("{}: {}", e.error_code(), e))
@@ -75,6 +108,12 @@ pub struct SettingsUpdateJson {
     pub show_notifications: Option<bool>,
     pub language: Option<String>,
     pub theme: Option<String>,
+    pub ai_provider: Option<String>,
+    pub ai_api_key: Option<String>,
+    pub ai_model: Option<String>,
+    pub ai_base_url: Option<String>,
+    pub ai_max_tokens: Option<u32>,
+    pub ai_temperature: Option<f32>,
 }
 
 #[tauri::command]

@@ -5,5 +5,6 @@ export { useLargeFileStore } from './largeFileStore';
 export { useJunkFileStore } from './junkFileStore';
 export { useAppCacheStore, useAppCacheActions } from './appCacheStore';
 export { useSettingsStore, useSettingsActions } from './settingsStore';
+export { useAgentStore } from './agentStore';
 export type { UIState } from './uiStore';
 export type { ScanSettings } from './settingsStore';
