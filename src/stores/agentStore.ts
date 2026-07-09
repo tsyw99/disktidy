@@ -1,11 +1,93 @@
 import { create } from 'zustand';
 import { listen } from '@tauri-apps/api/event';
 import type { UnlistenFn } from '@tauri-apps/api/event';
-import type { AgentMessage } from '../types/agent';
+import type { AgentMessage, ToolCallRecord } from '../types/agent';
 import {
   ERROR_CODE_MESSAGES,
 } from '../types/agent';
 import { agentService } from '../services/agentService';
+
+/**
+ * 前端侧去重：将 delta 安全追加到 accumulated，避免重复内容
+ * 作为后端去重的补充安全网
+ */
+function appendDedup(accumulated: string, delta: string): string {
+  if (!delta) return accumulated;
+  if (!accumulated) {
+    // 即使 accumulated 为空，也检测 delta 内部是否重复
+    return dedupInternal(delta);
+  }
+
+  const accLen = accumulated.length;
+  const deltaLen = delta.length;
+
+  // delta 完全被 accumulated 末尾覆盖
+  if (deltaLen <= accLen && accumulated.slice(accLen - deltaLen) === delta) {
+    return accumulated;
+  }
+
+  // 检测重叠：accumulated="好的", delta="的好的" → 保留"好的"
+  for (let overlap = Math.min(deltaLen, accLen); overlap > 0; overlap--) {
+    if (accumulated.slice(accLen - overlap) === delta.slice(0, overlap)) {
+      const remaining = delta.slice(overlap);
+      return accumulated + dedupInternal(remaining);
+    }
+  }
+
+  return accumulated + dedupInternal(delta);
+}
+
+function dedupInternal(s: string): string {
+  const len = s.length;
+  if (len < 2) return s;
+
+  // 尝试所有可能的重复周期
+  for (let period = 1; period <= Math.floor(len / 2); period++) {
+    if (len % period !== 0) continue;
+    const pattern = s.slice(0, period);
+    let allMatch = true;
+    for (let i = period; i < len; i += period) {
+      if (s.slice(i, i + period) !== pattern) { allMatch = false; break; }
+    }
+    if (allMatch && len > period) return pattern;
+  }
+
+  // 检查前半重复
+  for (let half = 1; half <= Math.floor(len / 2); half++) {
+    if (s.slice(0, half) === s.slice(half, half * 2)) {
+      return dedupInternal(s.slice(half));
+    }
+  }
+
+  return s;
+}
+
+/**
+ * 从 tool result 中提取纯 HTML 内容
+ * 后端可能返回 Rust Debug 格式包装的字符串
+ */
+function extractHtmlFromResult(raw: string): string {
+  // 直接以 HTML 开头
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
+    return trimmed;
+  }
+
+  // 从 Rust Debug 格式中提取: UserContent { ... "<html>...</html>" }
+  const htmlMatch = trimmed.match(/<!DOCTYPE html>[\s\S]*?<\/html>/i);
+  if (htmlMatch) return htmlMatch[0];
+
+  const altMatch = trimmed.match(/<html[^>]*>[\s\S]*?<\/html>/i);
+  if (altMatch) return altMatch[0];
+
+  return trimmed;
+}
+
+/** 从 generate_html 工具结果中提取 saved_path */
+function extractFilePathFromResult(raw: string): string | null {
+  const match = raw.match(/saved_path:\s*"([^"]+)"/);
+  return match ? match[1] : null;
+}
 
 /**
  * 从 Tauri invoke 错误中提取结构化错误码和消息
@@ -36,6 +118,7 @@ interface StreamEvent {
   tool_result?: string;
   error?: string;
   error_code?: string;
+  content_type?: string;
 }
 
 interface AgentStore {
@@ -51,6 +134,8 @@ interface AgentStore {
   streamingContent: string;
   streamingToolName: string | null;
   streamingToolResult: string | null;
+  streamingToolResultType: string | null;
+  streamingToolCalls: ToolCallRecord[];
 
   // 重试状态
   lastFailedMessage: string | null;
@@ -82,6 +167,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   streamingContent: '',
   streamingToolName: null,
   streamingToolResult: null,
+  streamingToolResultType: null,
+  streamingToolCalls: [],
   lastFailedMessage: null,
   _unlisten: null,
 
@@ -175,6 +262,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       streamingContent: '',
       streamingToolName: null,
       streamingToolResult: null,
+      streamingToolResultType: null,
+      streamingToolCalls: [],
       lastFailedMessage: null,
     }));
 
@@ -241,13 +330,13 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
 
     switch (event.type) {
       case 'thinking_start':
-        set({ streamingContent: '', streamingToolName: null, streamingToolResult: null });
+        set({ streamingContent: '', streamingToolName: null, streamingToolResult: null, streamingToolResultType: null, streamingToolCalls: [] });
         break;
 
       case 'text_delta':
         if (event.content) {
           set((state) => ({
-            streamingContent: state.streamingContent + event.content,
+            streamingContent: appendDedup(state.streamingContent, event.content!),
           }));
         }
         break;
@@ -260,20 +349,40 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         break;
 
       case 'tool_result':
-        set({
-          streamingToolResult: event.tool_result || null,
-          streamingToolName: null,
+        set((state) => {
+          const newCall: ToolCallRecord = {
+            toolName: state.streamingToolName || event.tool_name || 'unknown',
+            toolResult: event.tool_result || '',
+            resultType: event.content_type || null,
+          };
+          return {
+            streamingToolResult: event.tool_result || null,
+            streamingToolResultType: event.content_type || null,
+            streamingToolName: null,
+            streamingToolCalls: [...state.streamingToolCalls, newCall],
+          };
         });
         break;
 
       case 'done':
         if (isStreaming) {
           const finalContent = event.content || get().streamingContent;
+          const toolCalls = [...get().streamingToolCalls];
+          // 从工具调用中提取 HTML 报告
+          const htmlCall = toolCalls.find(tc => tc.resultType === 'html');
+          const htmlReport = htmlCall ? extractHtmlFromResult(htmlCall.toolResult) : undefined;
+          // 从 generate_html 结果中提取文件路径
+          const generateHtmlCall = toolCalls.find(tc => tc.toolName === 'generate_html');
+          const reportFilePath = generateHtmlCall ? extractFilePathFromResult(generateHtmlCall.toolResult) ?? undefined : undefined;
+
           const assistantMsg: AgentMessage = {
             id: generateId(),
             role: 'assistant',
             content: finalContent,
             timestamp: Date.now(),
+            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+            htmlReport,
+            reportFilePath,
           };
 
           set((state) => ({
@@ -283,6 +392,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
             streamingContent: '',
             streamingToolName: null,
             streamingToolResult: null,
+            streamingToolResultType: null,
+            streamingToolCalls: [],
             lastFailedMessage: null,
           }));
         }
@@ -312,6 +423,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
             streamingContent: '',
             streamingToolName: null,
             streamingToolResult: null,
+            streamingToolResultType: null,
+            streamingToolCalls: [],
           }));
         } else {
           set({
@@ -319,6 +432,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
             errorCode,
             isLoading: false,
             isStreaming: false,
+            streamingToolCalls: [],
           });
         }
         break;

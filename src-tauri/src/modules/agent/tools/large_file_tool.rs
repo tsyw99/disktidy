@@ -4,6 +4,7 @@ use tauri::AppHandle;
 
 use crate::modules::large_file_scanner::{start_scan, ScanConfig};
 use super::tool_error::ToolError;
+use super::ToolPrompt;
 
 #[derive(Debug, Deserialize)]
 pub struct LargeFileToolInput {
@@ -25,6 +26,23 @@ pub struct LargeFileToolOutput {
     pub scan_id: String,
     pub status: String,
     pub message: String,
+    pub _prompt: String,
+}
+
+impl ToolPrompt for LargeFileTool {
+    fn detailed_prompt(&self) -> &'static str {
+        r#"## 大文件扫描工作流
+你正在使用 large_file_scanner 工具分析大文件，请遵循以下流程：
+
+1. 扫描启动后告知用户当前阈值和扫描范围
+2. 收到结果后，用表格展示 TOP 大文件：文件名 | 路径 | 大小
+3. 分析大文件是否可以安全删除或移动：
+   - 安装包（.exe/.msi/.dmg）→ 可删除或备份
+   - 视频/大型文档 → 建议移到外置存储
+   - 系统文件 → 警告不可删除
+4. 对可清理的大文件，建议调用 cleaner 或 file_delete 处理
+"#
+    }
 }
 
 pub struct LargeFileTool {
@@ -86,6 +104,7 @@ impl Tool for LargeFileTool {
                 scan_id,
                 status: "started".to_string(),
                 message: "大文件扫描已启动，请通过事件系统获取进度".to_string(),
+                _prompt: self.detailed_prompt().to_string(),
             }),
             Err(e) => Err(ToolError::ScanFailed(e)),
         }

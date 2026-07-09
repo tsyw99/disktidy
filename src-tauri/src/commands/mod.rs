@@ -10,3 +10,5 @@ pub mod software_residue;
 pub mod driver;
 pub mod file_classifier;
 pub mod agent;
+pub mod file_content;
+pub mod file_organizer;

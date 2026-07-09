@@ -9,3 +9,5 @@ export * from './error';
 export * from './appCache';
 export * from './fileClassifier';
 export * from './agent';
+export * from './fileContent';
+export * from './fileOrganizer';

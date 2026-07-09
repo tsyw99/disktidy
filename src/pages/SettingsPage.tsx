@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Settings, Sun, Moon, Monitor, HardDrive, Trash2, Shield, Bell, FolderX, FileCheck, AlertTriangle, Construction, Info, Github, User, X, FolderOpen, Bot, Eye, EyeOff, Wifi, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
-import { useUIStore, useSettingsStore, useSettingsActions } from '../stores';
+import { useUIStore, useSettingsStore, useSettingsActions, useAgentStore } from '../stores';
 import { Modal } from '../components/common';
 import { APP_VERSION } from '../utils/constants';
 import { agentService } from '../services/agentService';
@@ -13,7 +13,8 @@ function SettingsPage() {
   
   const scanSettings = useSettingsStore((state) => state.scanSettings);
   const aiSettings = useSettingsStore((state) => state.aiSettings);
-  const { setScanSettings, addExcludePath, removeExcludePath, setAiSettings, resetAiSettings } = useSettingsActions();
+  const { init } = useAgentStore();
+  const { setScanSettings, addExcludePath, removeExcludePath, setAiSettings } = useSettingsActions();
 
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -52,19 +53,22 @@ function SettingsPage() {
     closeModal();
   };
 
+  const syncSettingsToBackend = async () => {
+    await settingsService.updatePartial({
+      ai_provider: aiSettings.provider,
+      ai_api_key: aiSettings.apiKey,
+      ai_model: aiSettings.model,
+      ai_base_url: aiSettings.baseUrl,
+      ai_max_tokens: aiSettings.maxTokens,
+      ai_temperature: aiSettings.temperature,
+    });
+  };
+
   const handleTestConnection = async () => {
     setTesting(true);
     setTestResult(null);
     try {
-      // 先同步设置到后端
-      await settingsService.updatePartial({
-        ai_provider: aiSettings.provider,
-        ai_api_key: aiSettings.apiKey,
-        ai_model: aiSettings.model,
-        ai_base_url: aiSettings.baseUrl,
-        ai_max_tokens: aiSettings.maxTokens,
-        ai_temperature: aiSettings.temperature,
-      });
+      await syncSettingsToBackend();
       const result = await agentService.testConnection();
       setTestResult({ success: result.success, message: result.message });
     } catch (e) {
@@ -72,6 +76,13 @@ function SettingsPage() {
     } finally {
       setTesting(false);
     }
+  };
+
+  const handleSaveAndConnect = async () => {
+    setTestResult(null);
+    await syncSettingsToBackend();
+    await init(); // 初始化AI助手
+    closeModal();
   };
 
   return (
@@ -154,12 +165,7 @@ function SettingsPage() {
               description="配置安全扫描选项"
               onClick={showDevelopingToast}
             />
-            <SettingItem
-              icon={<Bell className="w-5 h-5" />}
-              title="通知设置"
-              description="管理应用通知偏好"
-              onClick={showDevelopingToast}
-            />
+
           </div>
         </div>
 
@@ -401,44 +407,7 @@ function SettingsPage() {
         </div>
       </Modal>
 
-      <Modal
-        visible={activeModal === 'notification'}
-        onClose={closeModal}
-        title="通知设置"
-        size={{ width: 420, maxWidth: '90vw' }}
-        animation={{ type: 'fade', duration: 0.15 }}
-        overlay={{ opacity: 0.4 }}
-        buttons={[
-          { text: '关闭', onClick: closeModal, variant: 'secondary' },
-        ]}
-      >
-        <div className="space-y-4">
-          <div className="space-y-3">
-            {[
-              { label: '扫描完成通知', enabled: true },
-              { label: '清理完成通知', enabled: true },
-              { label: '系统警告通知', enabled: true },
-              { label: '更新提醒', enabled: false },
-              { label: '每周报告', enabled: false },
-            ].map((item, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between p-3 rounded-lg bg-[var(--bg-secondary)]"
-              >
-                <span className="text-sm text-[var(--text-secondary)]">{item.label}</span>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    defaultChecked={item.enabled}
-                    className="sr-only peer"
-                  />
-                  <div className="w-9 h-5 bg-[var(--bg-tertiary)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]"></div>
-                </label>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Modal>
+
 
       <Modal
         visible={activeModal === 'aiSettings'}
@@ -447,17 +416,31 @@ function SettingsPage() {
         size={{ width: 520, maxWidth: '90vw' }}
         animation={{ type: 'scale', duration: 0.25 }}
         overlay={{ opacity: 0.6, blur: true }}
-        buttons={[
-          { text: '重置', onClick: () => { resetAiSettings(); closeModal(); }, variant: 'ghost' },
-          { text: '关闭', onClick: closeModal, variant: 'secondary' },
-        ]}
+        buttons={[]}
       >
         <div className="space-y-4">
           <div className="p-4 rounded-lg bg-[var(--bg-secondary)]">
             <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">LLM 提供商</h4>
             <select
               value={aiSettings.provider}
-              onChange={(e) => { setAiSettings({ provider: e.target.value }); setTestResult(null); }}
+              onChange={(e) => { 
+                const newProvider = e.target.value;
+                let newModel = aiSettings.model; // 默认保持当前模型
+                
+                // 根据提供商自动设置推荐的模型
+                if (newProvider === 'glm' && !aiSettings.model.startsWith('glm')) {
+                  newModel = 'glm-4';
+                } else if (newProvider === 'deepseek' && !aiSettings.model.startsWith('deepseek')) {
+                  newModel = 'deepseek-chat';
+                } else if (newProvider === 'kimi' && !aiSettings.model.startsWith('kimi')) {
+                  newModel = 'moonshot-v1-auto';
+                } else if (newProvider === 'openai_compatible') {
+                  newModel = 'gpt-3.5-turbo'; // 或者保持当前模型
+                }
+                
+                setAiSettings({ provider: newProvider, model: newModel }); 
+                setTestResult(null); 
+              }}
               className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border-color)] select-custom"
             >
               <option value="deepseek">DeepSeek</option>
@@ -486,9 +469,6 @@ function SettingsPage() {
                 {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-            <p className="text-xs text-[var(--text-tertiary)] mt-1">
-              API Key 将安全存储在你的本地配置文件中
-            </p>
           </div>
 
           <div className="p-4 rounded-lg bg-[var(--bg-secondary)]">
@@ -557,19 +537,28 @@ function SettingsPage() {
             </div>
           )}
 
-          {/* 测试连接按钮 */}
-          <button
-            onClick={handleTestConnection}
-            disabled={testing || !aiSettings.apiKey.trim()}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {testing ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Wifi className="w-4 h-4" />
-            )}
-            测试连接
-          </button>
+          {/* 操作按钮 */}
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={handleTestConnection}
+              disabled={testing || !aiSettings.apiKey.trim()}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {testing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Wifi className="w-4 h-4" />
+              )}
+              测试连接
+            </button>
+            <button
+               onClick={handleSaveAndConnect}
+               disabled={!aiSettings.apiKey.trim()}
+               className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+             >
+               保存并连接
+             </button>
+          </div>
 
           <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
             <p className="text-xs text-blue-600 dark:text-blue-400">

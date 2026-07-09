@@ -21,6 +21,12 @@ pub fn run() {
             commands::system::system_get_disks,
             commands::system::system_get_cpu_info,
             commands::system::system_get_memory_info,
+            commands::system::system_get_paths,
+            commands::system::system_resolve_path,
+            commands::system::system_save_html,
+            commands::system::system_open_in_browser,
+            commands::system::system_open_file,
+            commands::system::system_open_folder,
             commands::scan::disk_scan_start,
             commands::scan::disk_scan_pause,
             commands::scan::disk_scan_resume,
@@ -119,6 +125,15 @@ pub fn run() {
             commands::agent::agent_status,
             commands::agent::agent_reset_executing,
             commands::agent::agent_test_connection,
+            commands::file_content::content_analyze_files,
+            commands::file_content::content_generate_html_report,
+            commands::file_content::content_compare_similarity,
+            commands::file_content::content_batch_similarity,
+            commands::file_organizer::organizer_scan,
+            commands::file_organizer::organizer_preview,
+            commands::file_organizer::organizer_execute,
+            commands::file_organizer::organizer_default_rules,
+            commands::file_organizer::organizer_classify,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

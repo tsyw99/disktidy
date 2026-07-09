@@ -105,6 +105,123 @@ impl SystemPaths {
         dirs::document_dir()
     }
 
+    /// 获取桌面目录路径（支持 OneDrive Desktop 等自定义位置）
+    pub fn desktop_dir() -> Option<PathBuf> {
+        // dirs::desktop_dir() 在 Windows 上底层已调用 SHGetKnownFolderPath(FOLDERID_Desktop)
+        // 能正确处理 OneDrive Desktop 等重定向情况
+        if let Some(desktop) = dirs::desktop_dir() {
+            if desktop.exists() {
+                return Some(desktop);
+            }
+        }
+
+        // 降级：尝试常见桌面路径
+        if let Some(home) = dirs::home_dir() {
+            let candidates = [
+                home.join("Desktop"),
+                home.join("OneDrive").join("Desktop"),
+                home.join("桌面"),
+            ];
+            for candidate in &candidates {
+                if candidate.exists() {
+                    return Some(candidate.clone());
+                }
+            }
+        }
+
+        None
+    }
+
+    /// 智能解析用户输入路径（支持别名：桌面/desktop、文档/documents、下载/downloads 等）
+    pub fn resolve_path(input: &str) -> Option<PathBuf> {
+        let trimmed = input.trim().to_lowercase();
+
+        // 绝对路径直接返回
+        let path = Path::new(input);
+        if path.is_absolute() && path.exists() {
+            return Some(path.to_path_buf());
+        }
+
+        // 检查是否路径已存在（Windows 带盘符）
+        if input.len() >= 2 && input.chars().nth(1) == Some(':') {
+            let check = PathBuf::from(input);
+            if check.exists() {
+                return Some(check);
+            }
+        }
+
+        // 别名映射
+        match trimmed.as_str() {
+            "desktop" | "桌面" => Self::desktop_dir(),
+            "documents" | "文档" => Self::documents_dir(),
+            "downloads" | "下载" => dirs::download_dir(),
+            "pictures" | "图片" => dirs::picture_dir(),
+            "music" | "音乐" => dirs::audio_dir(),
+            "videos" | "视频" => dirs::video_dir(),
+            "home" | "主目录" | "用户目录" => dirs::home_dir(),
+            "temp" | "临时" | "tmp" => Some(std::env::temp_dir()),
+            _ => {
+                // 检查是否包含别名作为目录名
+                let aliases = [
+                    ("desktop", Self::desktop_dir()),
+                    ("桌面", Self::desktop_dir()),
+                    ("documents", Self::documents_dir()),
+                    ("文档", Self::documents_dir()),
+                    ("downloads", dirs::download_dir()),
+                    ("下载", dirs::download_dir()),
+                ];
+
+                for (alias, dir) in &aliases {
+                    if trimmed.contains(alias) {
+                        if let Some(base_dir) = dir {
+                            // 尝试拼接剩余路径（如"桌面/项目"）
+                            let rest = trimmed
+                                .replace(alias, "")
+                                .trim()
+                                .trim_start_matches('/')
+                                .trim_start_matches('\\')
+                                .to_string();
+                            if rest.is_empty() {
+                                return Some(base_dir.clone());
+                            }
+                            let full = base_dir.join(&rest);
+                            if full.exists() {
+                                return Some(full);
+                            }
+                        }
+                    }
+                }
+
+                None
+            }
+        }
+    }
+
+    /// 获取所有可能的桌面目录路径（用于扫描检测）
+    pub fn get_desktop_candidates() -> Vec<PathBuf> {
+        let mut candidates = Vec::new();
+        
+        // 通过 Win32 API 获取（最准确）
+        if let Some(desktop) = Self::desktop_dir() {
+            candidates.push(desktop);
+        }
+        
+        if let Some(home) = dirs::home_dir() {
+            let extras = [
+                home.join("Desktop"),
+                home.join("OneDrive").join("Desktop"),
+                home.join("桌面"),
+            ];
+            for extra in &extras {
+                if extra.exists() && !candidates.contains(extra) {
+                    candidates.push(extra.clone());
+                }
+            }
+        }
+        
+        candidates
+    }
+
     pub fn app_data_local() -> Option<PathBuf> {
         dirs::cache_dir()
     }

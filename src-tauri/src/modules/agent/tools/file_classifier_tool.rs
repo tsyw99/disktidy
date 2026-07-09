@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::modules::cancellable_file_classifier::{CancellableFileClassifier, FileClassificationOptions, FileTypeStats, FileBriefInfo};
 use super::tool_error::ToolError;
+use super::ToolPrompt;
 
 #[derive(Debug, Deserialize)]
 pub struct FileClassifierToolInput {
@@ -24,6 +25,22 @@ pub struct FileClassifierToolOutput {
     pub total_folders: u64,
     pub categories: Vec<FileTypeStats>,
     pub largest_files: Vec<FileBriefInfo>,
+    pub _prompt: String,
+}
+
+impl ToolPrompt for FileClassifierTool {
+    fn detailed_prompt(&self) -> &'static str {
+        r#"## 文件分类分析工作流
+你正在使用 file_classifier 工具进行文件分类，请遵循以下流程：
+
+1. 展示分类结果摘要：总文件数、总大小、目录数
+2. 用表格展示各类别：类型 | 文件数 | 总大小 | 占比
+3. 列出 TOP 大文件（文件路径、大小）
+4. 提供优化建议：
+   - 哪些类别占空间最大
+   - 建议下一步操作（如调用 file_delete 清理特定类型、调用 file_organizer 整理）
+"#
+    }
 }
 
 pub struct FileClassifierTool;
@@ -88,6 +105,7 @@ impl Tool for FileClassifierTool {
             total_folders: result.total_folders,
             categories: result.categories,
             largest_files: result.largest_files,
+            _prompt: self.detailed_prompt().to_string(),
         })
     }
 }

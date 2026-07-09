@@ -80,9 +80,7 @@ export default function AgentChatPage() {
         size={{ width: 520, maxWidth: '90vw' }}
         animation={{ type: 'scale', duration: 0.25 }}
         overlay={{ opacity: 0.6, blur: true }}
-        buttons={[
-          { text: '关闭', onClick: handleCloseSettings, variant: 'secondary' },
-        ]}
+        buttons={[]}
       >
         <div className="space-y-4">
           {/* LLM 提供商 */}
@@ -90,7 +88,24 @@ export default function AgentChatPage() {
             <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">LLM 提供商</h4>
             <select
               value={aiSettings.provider}
-              onChange={(e) => { setAiSettings({ provider: e.target.value }); setTestResult(null); }}
+              onChange={(e) => { 
+                const newProvider = e.target.value;
+                let newModel = aiSettings.model; // 默认保持当前模型
+                
+                // 根据提供商自动设置推荐的模型
+                if (newProvider === 'glm' && !aiSettings.model.startsWith('glm')) {
+                  newModel = 'glm-4';
+                } else if (newProvider === 'deepseek' && !aiSettings.model.startsWith('deepseek')) {
+                  newModel = 'deepseek-chat';
+                } else if (newProvider === 'kimi' && !aiSettings.model.startsWith('kimi')) {
+                  newModel = 'moonshot-v1-auto';
+                } else if (newProvider === 'openai_compatible') {
+                  newModel = 'gpt-3.5-turbo'; // 或者保持当前模型
+                }
+                
+                setAiSettings({ provider: newProvider, model: newModel }); 
+                setTestResult(null); 
+              }}
               className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border-color)] select-custom"
             >
               <option value="deepseek">DeepSeek</option>

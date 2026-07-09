@@ -10,6 +10,8 @@ export { junkFileScanService } from './junkFileScanService';
 export { softwareResidueService } from './softwareResidueService';
 export { driverService } from './driverService';
 export { agentService } from './agentService';
+export { fileContentService } from './fileContentService';
+export { fileOrganizerService } from './fileOrganizerService';
 export {
   optimizedFileClassifier,
   ClassificationValidator,

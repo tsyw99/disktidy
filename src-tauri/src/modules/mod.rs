@@ -10,6 +10,8 @@ pub mod driver_manager;
 pub mod software_residue;
 pub mod scanner_framework;
 pub mod agent;
+pub mod file_content_analyzer;
+pub mod file_organizer;
 
 pub use system_info::*;
 pub use disk_scan::*;

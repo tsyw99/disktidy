@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Trash2, Loader2, Wrench, CheckCircle2, RotateCcw, AlertTriangle, Settings } from 'lucide-react';
+import { Send, Trash2, Loader2, Wrench, CheckCircle2, RotateCcw, AlertTriangle, Settings, ChevronDown, ChevronRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAgentStore } from '../../stores/agentStore';
 import MarkdownRenderer from './MarkdownRenderer';
+import HtmlReportCard from './HtmlReportCard';
+import type { AgentMessage, ToolCallRecord } from '../../types/agent';
 import {
   ERROR_CODE_MESSAGES,
   RETRYABLE_ERROR_CODES,
@@ -9,6 +12,87 @@ import {
 
 interface ChatPanelProps {
   onOpenSettings?: () => void;
+}
+
+/** 单条工具调用展示 */
+function ToolCallItem({ call, isLast }: { call: ToolCallRecord; isLast: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const isHtml = call.resultType === 'html';
+  const preview = isHtml ? 'HTML 报告' : (call.toolResult.length > 80 ? call.toolResult.slice(0, 80) + '...' : call.toolResult);
+
+  return (
+    <div className="text-xs">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 w-full text-left py-0.5 hover:bg-white/50 dark:hover:bg-gray-600/30 rounded px-1 -mx-1 transition-colors"
+      >
+        {expanded ? <ChevronDown className="w-3 h-3 flex-shrink-0" /> : <ChevronRight className="w-3 h-3 flex-shrink-0" />}
+        <CheckCircle2 className="w-3 h-3 text-green-500 flex-shrink-0" />
+        <span className="font-medium text-gray-600 dark:text-gray-300 truncate">{call.toolName}</span>
+        <span className="text-gray-400 dark:text-gray-500 truncate">— {preview}</span>
+      </button>
+      {expanded && (
+        <div className={`ml-5 mt-0.5 p-1.5 rounded bg-white/60 dark:bg-gray-600/40 max-h-32 overflow-y-auto whitespace-pre-wrap break-all text-gray-500 dark:text-gray-400 ${isLast ? '' : 'border-l-2 border-green-200 dark:border-green-800'}`}>
+          {call.toolResult}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 助手消息气泡中的工具调用摘要 */
+function ToolCallsSummary({ toolCalls }: { toolCalls: ToolCallRecord[] }) {
+  const [showTools, setShowTools] = useState(false);
+
+  return (
+    <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+      <button
+        onClick={() => setShowTools(!showTools)}
+        className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+      >
+        {showTools ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <Wrench className="w-3 h-3" />
+        <span>已调用 {toolCalls.length} 个工具</span>
+      </button>
+      <AnimatePresence>
+        {showTools && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="mt-1.5 space-y-0.5">
+              {toolCalls.map((call, idx) => (
+                <ToolCallItem key={idx} call={call} isLast={idx === toolCalls.length - 1} />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** 助手消息组件 */
+function AssistantBubble({ message }: { message: AgentMessage }) {
+  return (
+    <div className="bg-gray-100 dark:bg-gray-700 rounded-2xl rounded-bl-md px-4 py-2.5 max-w-[85%] text-sm">
+      <MarkdownRenderer content={message.content} />
+      {message.toolCalls && message.toolCalls.length > 0 && (
+        <ToolCallsSummary toolCalls={message.toolCalls} />
+      )}
+      {(message.htmlReport || message.reportFilePath) && (
+        <div className="mt-2">
+          <HtmlReportCard
+            htmlContent={message.htmlReport}
+            filePath={message.reportFilePath}
+          />
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ChatPanel({ onOpenSettings }: ChatPanelProps) {
@@ -23,6 +107,7 @@ export default function ChatPanel({ onOpenSettings }: ChatPanelProps) {
     streamingContent,
     streamingToolName,
     streamingToolResult,
+    streamingToolCalls,
     error,
     errorCode,
     sendStreamMessage,
@@ -56,6 +141,14 @@ export default function ChatPanel({ onOpenSettings }: ChatPanelProps) {
     }
   };
 
+  // auto-resize textarea
+  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    const el = e.target;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* 顶部工具栏 */}
@@ -85,8 +178,12 @@ export default function ChatPanel({ onOpenSettings }: ChatPanelProps) {
         {messages.length === 0 && !isStreaming && (
           <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500">
             <p className="text-lg mb-2">👋 你好！我是 DiskTidy AI 助手</p>
-            <p className="text-sm">我可以帮你扫描磁盘、分析文件、清理垃圾</p>
-            <p className="text-sm">试试问我："帮我扫描 C 盘"</p>
+            <p className="text-sm">我可以帮你扫描磁盘、分析文件、整理目录</p>
+            <p className="text-sm">试试问我：</p>
+            <p className="text-xs mt-1 text-gray-400 dark:text-gray-600">
+              "帮我查看 E:\项目 目录下有什么文件"<br />
+              "帮我整理一下桌面"
+            </p>
           </div>
         )}
 
@@ -95,23 +192,17 @@ export default function ChatPanel({ onOpenSettings }: ChatPanelProps) {
             key={msg.id}
             className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
-            <div
-              className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                msg.role === 'user'
-                  ? 'bg-blue-500 text-white rounded-br-md'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-md'
-              }`}
-            >
-              {msg.role === 'user' ? (
+            {msg.role === 'user' ? (
+              <div className="bg-blue-500 text-white rounded-2xl rounded-br-md px-4 py-2.5 max-w-[80%] text-sm leading-relaxed">
                 <div className="whitespace-pre-wrap break-words">{msg.content}</div>
-              ) : (
-                <MarkdownRenderer content={msg.content} />
-              )}
-            </div>
+              </div>
+            ) : (
+              <AssistantBubble message={msg} />
+            )}
           </div>
         ))}
 
-        {/* 流式内容：工具调用状态 */}
+        {/* 流式：工具调用状态（执行中） */}
         {isStreaming && streamingToolName && (
           <div className="flex justify-start">
             <div className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl rounded-bl-md px-4 py-2.5 max-w-[80%]">
@@ -119,14 +210,17 @@ export default function ChatPanel({ onOpenSettings }: ChatPanelProps) {
                 <Wrench className="w-4 h-4 animate-pulse" />
                 <span className="font-medium">正在执行: {streamingToolName}</span>
               </div>
+              <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                正在处理中，请稍候...
+              </div>
             </div>
           </div>
         )}
 
-        {/* 流式内容：工具结果 */}
-        {isStreaming && streamingToolResult && (
-          <div className="flex justify-start">
-            <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl rounded-bl-md px-4 py-2.5 max-w-[80%]">
+        {/* 流式：工具调用结果（执行完成，非 HTML） */}
+        {isStreaming && streamingToolResult && !streamingToolCalls.some(c => c.toolResult === streamingToolResult && c.resultType === 'html') && (
+          <div className="flex justify-start max-w-[80%]">
+            <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl rounded-bl-md px-4 py-2.5 w-full">
               <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-300">
                 <CheckCircle2 className="w-4 h-4" />
                 <span className="font-medium">工具执行完成</span>
@@ -138,17 +232,17 @@ export default function ChatPanel({ onOpenSettings }: ChatPanelProps) {
           </div>
         )}
 
-        {/* 流式内容：实时文本 */}
+        {/* 流式：实时文本 */}
         {isStreaming && streamingContent && (
           <div className="flex justify-start">
-            <div className="bg-gray-100 dark:bg-gray-700 rounded-2xl rounded-bl-md px-4 py-2.5 max-w-[80%]">
+            <div className="bg-gray-100 dark:bg-gray-700 rounded-2xl rounded-bl-md px-4 py-2.5 max-w-[85%]">
               <MarkdownRenderer content={streamingContent} />
               <span className="inline-block w-1.5 h-4 bg-blue-500 ml-0.5 animate-pulse align-text-bottom" />
             </div>
           </div>
         )}
 
-        {/* 加载指示器（等待首个 token） */}
+        {/* 加载指示器 */}
         {isLoading && !isStreaming && !streamingContent && (
           <div className="flex justify-start">
             <div className="bg-gray-100 dark:bg-gray-700 rounded-2xl rounded-bl-md px-4 py-3">
@@ -157,11 +251,13 @@ export default function ChatPanel({ onOpenSettings }: ChatPanelProps) {
           </div>
         )}
 
-        {/* 流式加载中但没有内容时 */}
-        {isStreaming && !streamingContent && !streamingToolName && (
+        {isStreaming && !streamingContent && !streamingToolName && !streamingToolResult && (
           <div className="flex justify-start">
             <div className="bg-gray-100 dark:bg-gray-700 rounded-2xl rounded-bl-md px-4 py-3">
-              <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                <span className="text-sm text-gray-500 dark:text-gray-400">AI 正在思考...</span>
+              </div>
             </div>
           </div>
         )}
@@ -208,12 +304,12 @@ export default function ChatPanel({ onOpenSettings }: ChatPanelProps) {
           <textarea
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder="输入消息..."
-            rows={1}
+            placeholder="输入消息，如：帮我查看E:\\项目目录，帮我整理桌面..."
             disabled={isLoading}
             className="flex-1 resize-none rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent disabled:opacity-50"
+            style={{ maxHeight: 160 }}
           />
           <button
             onClick={handleSend}

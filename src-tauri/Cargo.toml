@@ -1,6 +1,6 @@
 [package]
-name = "disktidy-lib"
-version = "2.0.1"
+name = "disktidy"
+version = "2.1.1"
 description = "Windows磁盘清理工具"
 authors = ["DiskTidy Team"]
 edition = "2021"
@@ -46,6 +46,13 @@ async-trait = "0.1"
 keyring = { version = "3", features = ["windows-native", "sync-secret-service"] }
 rig-core = "0.39"
 tokio-stream = "0.1"
+pdf-extract = "0.6"
+zip = "2"
+quick-xml = "0.37"
+unicode-segmentation = "1"
+calamine = "0.26"
+open = "5"
+trash = "5"
 
 [dev-dependencies]
 tempfile = "3"

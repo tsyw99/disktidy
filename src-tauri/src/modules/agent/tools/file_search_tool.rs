@@ -1,10 +1,10 @@
 use std::path::Path;
-use std::time::UNIX_EPOCH;
 use rig_core::tool::Tool;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 use super::tool_error::ToolError;
+use super::ToolPrompt;
 
 /// 文件查找分析工具输入
 #[derive(Debug, Deserialize)]
@@ -26,22 +26,10 @@ pub struct FileSearchToolInput {
 }
 
 fn default_max_results() -> usize {
-    500
+    200
 }
 
-/// 文件条目信息
-#[derive(Debug, Clone, Serialize)]
-pub struct FileEntry {
-    pub name: String,
-    pub path: String,
-    pub size_bytes: u64,
-    pub size_display: String,
-    pub modified: String,
-    pub is_dir: bool,
-    pub extension: String,
-}
-
-/// 文件查找分析结果
+/// 文件查找分析结果（精简版，避免 LLM token 超限和超时）
 #[derive(Debug, Serialize)]
 pub struct FileSearchToolOutput {
     pub directory: String,
@@ -49,9 +37,22 @@ pub struct FileSearchToolOutput {
     pub total_dirs: usize,
     pub total_size_bytes: u64,
     pub total_size_display: String,
-    pub files: Vec<FileEntry>,
+    /// 文件列表（仅包含名称、大小显示、扩展名，最多 200 条）
+    pub files: Vec<FileSummary>,
     pub extension_stats: Vec<ExtensionStat>,
     pub truncated: bool,
+    /// 可读摘要
+    pub summary: String,
+    /// 工具专属提示词
+    pub _prompt: String,
+}
+
+/// 精简文件摘要
+#[derive(Debug, Clone, Serialize)]
+pub struct FileSummary {
+    pub name: String,
+    pub size: String,
+    pub ext: String,
 }
 
 /// 文件类型统计
@@ -61,6 +62,23 @@ pub struct ExtensionStat {
     pub count: usize,
     pub total_size_bytes: u64,
     pub total_size_display: String,
+}
+
+impl ToolPrompt for FileSearchTool {
+    fn detailed_prompt(&self) -> &'static str {
+        r#"## 文件查找分析工作流
+你正在使用 file_search 工具查找和分析文件，请遵循以下流程：
+
+1. 展示查找结果：目录路径、文件总数、子目录数、总大小
+2. 用表格展示文件类型分布：类型 | 数量 | 总大小
+3. 列出代表性文件（最多 10 个）
+4. 根据文件类型建议后续操作：
+   - Excel表格(.xlsx/.xls) → 使用三步骤工作流：read_excel → analyze_data → generate_html
+   - 其他文档类(TXT/DOCX/PDF/MD) → 调用 file_content_analyzer 分析内容
+   - 大文件 → 调用 large_file_scanner 深度分析
+   - 杂乱文件 → 调用 file_organizer 整理
+"#
+    }
 }
 
 pub struct FileSearchTool;
@@ -126,7 +144,7 @@ impl Tool for FileSearchTool {
             )));
         }
 
-        let mut files: Vec<FileEntry> = Vec::new();
+        let mut files: Vec<FileSummary> = Vec::new();
         let mut total_dirs: usize = 0;
         let mut total_size: u64 = 0;
         let mut extension_stats: std::collections::HashMap<String, (usize, u64)> = std::collections::HashMap::new();
@@ -173,6 +191,8 @@ impl Tool for FileSearchTool {
                     })
                     .collect();
 
+                let summary = build_summary(&args.path, files.len(), total_dirs, total_size, &ext_stats, truncated);
+
                 return Ok(FileSearchToolOutput {
                     directory: args.path.clone(),
                     total_files: files.len(),
@@ -182,6 +202,8 @@ impl Tool for FileSearchTool {
                     files,
                     extension_stats: ext_stats,
                     truncated,
+                    summary,
+                    _prompt: self.detailed_prompt().to_string(),
                 });
             }
 
@@ -202,17 +224,6 @@ impl Tool for FileSearchTool {
             })?;
 
             let size = metadata.len();
-            let modified = metadata
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map(|d| {
-                    let secs = d.as_secs();
-                    let datetime = chrono::DateTime::from_timestamp(secs as i64, 0)
-                        .unwrap_or_default();
-                    datetime.format("%Y-%m-%d %H:%M:%S").to_string()
-                })
-                .unwrap_or_else(|| "未知".to_string());
 
             total_size += size;
 
@@ -222,16 +233,11 @@ impl Tool for FileSearchTool {
             stat.1 += size;
 
             let file_name = entry.file_name().to_string_lossy().to_string();
-            let file_path = entry.path().to_string_lossy().to_string();
 
-            files.push(FileEntry {
+            files.push(FileSummary {
                 name: file_name,
-                path: file_path,
-                size_bytes: size,
-                size_display: format_file_size(size),
-                modified,
-                is_dir: false,
-                extension: ext,
+                size: format_file_size(size),
+                ext,
             });
         }
 
@@ -245,6 +251,8 @@ impl Tool for FileSearchTool {
             })
             .collect();
 
+        let summary = build_summary(&args.path, files.len(), total_dirs, total_size, &ext_stats, false);
+
         Ok(FileSearchToolOutput {
             directory: args.path.clone(),
             total_files: files.len(),
@@ -254,8 +262,36 @@ impl Tool for FileSearchTool {
             files,
             extension_stats: ext_stats,
             truncated: false,
+            summary,
+            _prompt: self.detailed_prompt().to_string(),
         })
     }
+}
+
+/// 生成可读摘要
+fn build_summary(
+    path: &str,
+    file_count: usize,
+    dir_count: usize,
+    total_size: u64,
+    ext_stats: &[ExtensionStat],
+    truncated: bool,
+) -> String {
+    let top_exts: Vec<String> = ext_stats
+        .iter()
+        .take(5)
+        .map(|s| format!("{}({}个)", s.extension, s.count))
+        .collect();
+
+    format!(
+        "目录: {}\n文件总数: {}{}\n子目录: {}\n总大小: {}\n主要类型: {}",
+        path,
+        file_count,
+        if truncated { "(已截断)" } else { "" },
+        dir_count,
+        format_file_size(total_size),
+        if top_exts.is_empty() { "无".to_string() } else { top_exts.join(", ") },
+    )
 }
 
 fn format_file_size(bytes: u64) -> String {

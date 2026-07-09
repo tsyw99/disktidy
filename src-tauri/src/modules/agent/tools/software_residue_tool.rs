@@ -4,6 +4,7 @@ use tauri::AppHandle;
 
 use crate::modules::software_residue::scanner::{SoftwareResidueScanner, ResidueScanOptions};
 use super::tool_error::ToolError;
+use super::ToolPrompt;
 
 #[derive(Debug, Deserialize)]
 pub struct SoftwareResidueToolInput {
@@ -17,6 +18,23 @@ pub struct SoftwareResidueToolOutput {
     pub total_residues: u64,
     pub total_size: u64,
     pub residues: Vec<serde_json::Value>,
+    pub _prompt: String,
+}
+
+impl ToolPrompt for SoftwareResidueTool {
+    fn detailed_prompt(&self) -> &'static str {
+        r#"## 软件残留扫描工作流
+你正在使用 software_residue_scanner 工具扫描已卸载软件的残留文件，请遵循以下流程：
+
+1. 展示扫描结果：发现的残留项数量和总大小
+2. 用表格展示：残留路径 | 类型（文件夹/注册表/文件）| 大小 | 关联的软件
+3. 分析风险：
+   - 空目录 → 安全删除
+   - 配置文件 → 谨慎处理（可能被其他软件共享）
+   - 缓存数据 → 可安全清理
+4. 建议调用 cleaner 工具清理确认的残留项
+"#
+    }
 }
 
 pub struct SoftwareResidueTool {
@@ -71,6 +89,7 @@ impl Tool for SoftwareResidueTool {
             total_residues,
             total_size,
             residues: results.iter().map(|r| serde_json::to_value(r).unwrap_or_default()).collect(),
+            _prompt: self.detailed_prompt().to_string(),
         })
     }
 }

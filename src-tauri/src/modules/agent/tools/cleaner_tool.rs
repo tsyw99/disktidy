@@ -5,6 +5,7 @@ use tauri::AppHandle;
 use crate::modules::cleaner::CleanerExecutor;
 use crate::models::CleanOptions;
 use super::tool_error::ToolError;
+use super::ToolPrompt;
 
 #[derive(Debug, Deserialize)]
 pub struct CleanerToolInput {
@@ -26,6 +27,23 @@ pub struct CleanerToolOutput {
     pub cleaned_files: u64,
     pub freed_space: u64,
     pub errors: Vec<String>,
+    /// 工具专属提示词
+    pub _prompt: String,
+}
+
+impl ToolPrompt for CleanerTool {
+    fn detailed_prompt(&self) -> &'static str {
+        r#"## 文件清理工作流
+你正在使用 cleaner 工具执行文件清理，请严格遵循以下流程：
+
+1. **预览展示**：先调用 cleaner 时设置为 confirmed=false 展示待清理文件列表
+2. 用表格展示：文件名 | 路径 | 大小 | 清理方式（回收站/永久删除）
+3. 区分安全级别，标注风险警告
+4. **必须等待用户确认**后才能执行 confirmed=true 的清理
+5. 清理后报告：成功数、失败数、释放空间
+6. 推荐优先使用 move_to_recycle_bin=true（移动到回收站），更安全
+"#
+    }
 }
 
 pub struct CleanerTool {
@@ -96,6 +114,7 @@ impl Tool for CleanerTool {
             cleaned_files: result.cleaned_files,
             freed_space: result.cleaned_size,
             errors: result.errors.iter().map(|e| format!("{}: {} - {}", e.path, e.error_code, e.error_message)).collect(),
+            _prompt: self.detailed_prompt().to_string(),
         })
     }
 }

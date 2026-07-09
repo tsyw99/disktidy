@@ -1,3 +1,10 @@
+// 工具调用记录
+export interface ToolCallRecord {
+  toolName: string;
+  toolResult: string;
+  resultType?: string | null;
+}
+
 // Agent 消息类型
 export interface AgentMessage {
   id: string;
@@ -6,6 +13,12 @@ export interface AgentMessage {
   timestamp: number;
   error?: boolean;
   retryCount?: number;
+  /** 工具调用历史（仅 assistant 消息，流式期间收集、done 时持久化） */
+  toolCalls?: ToolCallRecord[];
+  /** HTML 报告内容（仅 assistant 消息，来自 file_content_analyzer 等工具的输出） */
+  htmlReport?: string;
+  /** HTML 报告的文件路径（来自 generate_html 工具的输出，文件已保存在磁盘） */
+  reportFilePath?: string;
 }
 
 // Agent 流式事件

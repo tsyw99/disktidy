@@ -4,6 +4,7 @@ use tauri::AppHandle;
 
 use crate::modules::app_cache::scanner::{start_app_cache_scan, AppCacheScanOptions};
 use super::tool_error::ToolError;
+use super::ToolPrompt;
 
 #[derive(Debug, Deserialize)]
 pub struct AppCacheToolInput {
@@ -23,6 +24,24 @@ pub struct AppCacheToolOutput {
     pub total_apps: u64,
     pub total_size: u64,
     pub apps: Vec<serde_json::Value>,
+    /// 工具专属提示词，在工具被调用时随结果一起返回给 LLM
+    pub _prompt: String,
+}
+
+impl ToolPrompt for AppCacheTool {
+    fn detailed_prompt(&self) -> &'static str {
+        r#"## 应用缓存清理工作流
+你正在使用 app_cache_scanner 工具进行应用缓存清理，请严格遵循以下流程：
+
+1. 分析扫描结果，按缓存大小降序排列
+2. 区分安全级别：
+   - 可安全清理：浏览器缓存、临时文件、日志缓存
+   - 需谨慎清理：用户数据、应用配置、聊天记录
+3. 用表格展示：应用名 | 缓存大小 | 安全级别 | 建议操作
+4. 推荐使用 cleaner 工具执行清理（确保 confirmed=true）
+5. 清理完成后报告释放空间大小
+"#
+    }
 }
 
 pub struct AppCacheTool {
@@ -89,6 +108,7 @@ impl Tool for AppCacheTool {
             total_apps: 0,
             total_size: 0,
             apps: vec![],
+            _prompt: self.detailed_prompt().to_string(),
         })
     }
 }

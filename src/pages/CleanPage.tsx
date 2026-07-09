@@ -767,8 +767,8 @@ export default function CleanPage() {
                             {app.name}
                           </span>
                           {!isEnabled && (
-                            <p className="text-xs text-amber-500 mt-0.5">开发中</p>
-                          )}
+                          <p className="text-xs text-amber-500 mt-0.5">由于适配原因暂时下架</p>
+                        )}
                         </div>
                         {isEnabled && renderAppConfigStatus(app)}
                       </motion.button>

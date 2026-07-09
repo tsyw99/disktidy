@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use log::{info, warn, debug};
 
 use super::tool_error::ToolError;
+use super::ToolPrompt;
 
 /// 文件删除工具输入
 #[derive(Debug, Deserialize)]
@@ -52,6 +53,22 @@ pub struct FileDeleteToolOutput {
     pub errors: Vec<String>,
     /// 提示消息
     pub message: String,
+    /// 工具专属提示词
+    pub _prompt: String,
+}
+
+impl ToolPrompt for FileDeleteTool {
+    fn detailed_prompt(&self) -> &'static str {
+        r#"## 删除工作流（严格遵守）
+你正在使用 file_delete 工具进行文件删除，必须严格遵守以下安全流程：
+
+1. 调用 file_delete 设置 confirmed=false 获取待删除文件预览
+2. 向用户展示完整的文件列表和影响分析（表格形式）
+3. **必须等待用户明确确认**（"确认删除"、"是的"、"删除吧" 等）后才能继续
+4. 用户确认后，再次调用 file_delete 设置 confirmed=true 执行删除
+5. 报告删除结果（成功/失败统计）
+"#
+    }
 }
 
 pub struct FileDeleteTool;
@@ -134,6 +151,7 @@ impl Tool for FileDeleteTool {
                 failed_count: 0,
                 errors: vec![],
                 message: "没有找到匹配的文件".to_string(),
+                _prompt: self.detailed_prompt().to_string(),
             });
         }
 
@@ -154,6 +172,7 @@ impl Tool for FileDeleteTool {
                 failed_count: 0,
                 errors: vec![],
                 message: preview_msg,
+                _prompt: self.detailed_prompt().to_string(),
             });
         }
 
@@ -199,6 +218,7 @@ impl Tool for FileDeleteTool {
             failed_count: failed,
             errors,
             message: result_msg,
+            _prompt: self.detailed_prompt().to_string(),
         })
     }
 }

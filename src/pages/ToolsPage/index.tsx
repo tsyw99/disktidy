@@ -37,7 +37,7 @@ export default function ToolsPage() {
           </div>
         </div>
 
-        <div className="flex gap-4 border-b border-[var(--border-color)] pb-4 items-center">
+        <div className="flex gap-3 border-b border-[var(--border-color)] pb-4 items-center overflow-x-auto">
           {modules.map(module => (
             <motion.button
               key={module.id}
@@ -45,7 +45,7 @@ export default function ToolsPage() {
               whileTap={globalIsWorking ? {} : { scale: 0.98 }}
               onClick={() => !globalIsWorking && setActiveModule(module.id)}
               disabled={globalIsWorking}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 whitespace-nowrap ${
                 activeModule === module.id
                   ? 'bg-gradient-to-r from-[#3b82f6] to-[#10b981] text-white'
                   : globalIsWorking
@@ -71,40 +71,19 @@ export default function ToolsPage() {
 
         <AnimatePresence mode="wait">
           {activeModule === 'residual' && (
-            <motion.div
-              key="residual"
-              variants={pageVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              className="space-y-6"
-            >
+            <motion.div key="residual" variants={pageVariants} initial="initial" animate="animate" exit="exit" className="space-y-6">
               <SoftwareResidueTab />
             </motion.div>
           )}
 
           {activeModule === 'fileclassify' && (
-            <motion.div
-              key="fileclassify"
-              variants={pageVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              className="space-y-6"
-            >
+            <motion.div key="fileclassify" variants={pageVariants} initial="initial" animate="animate" exit="exit" className="space-y-6">
               <FileClassificationTab />
             </motion.div>
           )}
 
           {activeModule === 'driver' && (
-            <motion.div
-              key="driver"
-              variants={pageVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              className="space-y-6"
-            >
+            <motion.div key="driver" variants={pageVariants} initial="initial" animate="animate" exit="exit" className="space-y-6">
               <DriverManagerTab />
             </motion.div>
           )}

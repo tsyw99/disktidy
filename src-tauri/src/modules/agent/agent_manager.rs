@@ -18,9 +18,12 @@ use crate::modules::agent::prompts::SYSTEM_PROMPT;
 use crate::modules::agent::stream_bridge::bridge_stream_to_tauri;
 use crate::modules::agent::tools::{
     DiskScanTool, FileClassifierTool, LargeFileTool, CleanerTool,
-    AppCacheTool, SoftwareResidueTool, GarbageAnalyzerTool,
-    FileSearchTool, FileDeleteTool,
+    AppCacheTool, SoftwareResidueTool,
+    FileSearchTool, FileDeleteTool, FileContentTool, ResolvePathTool,
+    ScanDesktopTool, OrganizeFilesTool, ScanGarbageTool, CleanGarbageTool,
+    ReadExcelTool, AnalyzeDataTool, GenerateHtmlTool,
 };
+use crate::modules::agent::tools::file_write_tool::FileWriteTool;
 
 /// 最大重试次数
 const MAX_RETRIES: u32 = 2;
@@ -273,12 +276,21 @@ impl AgentManager {
             .tool(CleanerTool::new(self.app.clone()))
             .tool(AppCacheTool::new(self.app.clone()))
             .tool(SoftwareResidueTool::new(self.app.clone()))
-            .tool(GarbageAnalyzerTool::new())
+            .tool(ScanGarbageTool::new())
+            .tool(CleanGarbageTool::new())
             .tool(FileSearchTool::new())
             .tool(FileDeleteTool::new())
+            .tool(FileContentTool::new())
+            .tool(ScanDesktopTool::new())
+            .tool(OrganizeFilesTool::new())
+            .tool(ResolvePathTool::new())
+            .tool(FileWriteTool)
+            .tool(ReadExcelTool::new())
+            .tool(AnalyzeDataTool::new())
+            .tool(GenerateHtmlTool::new())
             .build();
 
-        debug!("构建 Agent 完成，已注册 9 个工具");
+        debug!("构建 Agent 完成，已注册 16 个工具");
 
         let context = self.context.read().await;
         let history = context.get_messages();
@@ -314,12 +326,21 @@ impl AgentManager {
             .tool(CleanerTool::new(self.app.clone()))
             .tool(AppCacheTool::new(self.app.clone()))
             .tool(SoftwareResidueTool::new(self.app.clone()))
-            .tool(GarbageAnalyzerTool::new())
+            .tool(ScanGarbageTool::new())
+            .tool(CleanGarbageTool::new())
             .tool(FileSearchTool::new())
             .tool(FileDeleteTool::new())
+            .tool(FileContentTool::new())
+            .tool(ScanDesktopTool::new())
+            .tool(OrganizeFilesTool::new())
+            .tool(ResolvePathTool::new())
+            .tool(FileWriteTool)
+            .tool(ReadExcelTool::new())
+            .tool(AnalyzeDataTool::new())
+            .tool(GenerateHtmlTool::new())
             .build();
 
-        debug!("构建 Agent 完成，已注册 9 个工具");
+        debug!("构建 Agent 完成，已注册 16 个工具");
 
         let context = self.context.read().await;
         let history = context.get_messages();
@@ -342,24 +363,18 @@ impl AgentManager {
         Ok(full_response)
     }
 
+    /// 创建或获取 LLM 客户端（始终使用当前配置创建，避免缓存过期）
     async fn create_client(&self) -> Result<openai::CompletionsClient, AgentError> {
-        // 尝试从缓存获取
-        {
-            let guard = self.client.read().await;
-            if let Some(client) = guard.as_ref() {
-                debug!("从缓存获取 LLM 客户端");
-                return Ok(client.clone());
-            }
-        }
-
-        // 读取配置
+        // 读取最新配置（每次创建新客户端以确保模型名、API Key 与设置同步）
         let config = self.config.read().await;
         config.validate()?;
         let api_key = config.api_key.clone();
         let base_url = config.get_base_url();
+        let model = config.model.clone();
         drop(config);
 
-        // 创建新客户端（使用 CompletionsClient 以支持 DeepSeek 等 Chat Completions API）
+        debug!("创建 LLM 客户端: base_url={}, model={}", base_url, model);
+
         let client = openai::CompletionsClient::builder()
             .api_key(&api_key)
             .base_url(&base_url)
@@ -375,13 +390,6 @@ impl AgentManager {
                 }
             })?;
 
-        // 缓存客户端
-        {
-            let mut guard = self.client.write().await;
-            *guard = Some(client.clone());
-        }
-
-        debug!("创建并缓存 LLM 客户端成功");
         Ok(client)
     }
 }

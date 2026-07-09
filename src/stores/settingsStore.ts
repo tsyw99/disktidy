@@ -50,6 +50,14 @@ const defaultAiSettings: AiSettings = {
   temperature: 0.7,
 };
 
+// 存储每个提供商的API Key
+let providerApiKeys: Record<string, string> = {
+  'deepseek': '',
+  'glm': '',
+  'kimi': '',
+  'openai_compatible': '',
+};
+
 export const useSettingsStore = create<SettingsState>()(
   devtools(
     persist(
@@ -91,9 +99,40 @@ export const useSettingsStore = create<SettingsState>()(
           },
 
           setAiSettings: (settings) => {
-            set((state) => ({
-              aiSettings: { ...state.aiSettings, ...settings },
-            }));
+            set((state) => {
+              const currentAiSettings = state.aiSettings;
+              let updatedSettings = { ...currentAiSettings, ...settings };
+              
+              // 如果切换了提供商，需要保存当前提供商的API Key，并加载新提供商的API Key
+              if (settings.provider && settings.provider !== currentAiSettings.provider) {
+                // 保存当前提供商的API Key
+                providerApiKeys[currentAiSettings.provider] = currentAiSettings.apiKey || '';
+                
+                // 切换到新提供商的API Key
+                const newProvider = settings.provider;
+                const newProviderApiKey = providerApiKeys[newProvider] || '';
+                
+                updatedSettings = {
+                  ...updatedSettings,
+                  provider: newProvider,
+                  apiKey: newProviderApiKey
+                };
+                
+                // 如果设置了新的API Key值，则更新对应提供商的Key
+                if (settings.apiKey !== undefined) {
+                  providerApiKeys[newProvider] = settings.apiKey;
+                  updatedSettings.apiKey = settings.apiKey;
+                }
+              } else if (settings.apiKey !== undefined && currentAiSettings.provider) {
+                // 如果没有切换提供商但设置了API Key，则更新当前提供商的API Key
+                providerApiKeys[currentAiSettings.provider] = settings.apiKey;
+                updatedSettings.apiKey = settings.apiKey;
+              }
+              
+              return {
+                aiSettings: updatedSettings
+              };
+            });
           },
 
           resetAiSettings: () => {
