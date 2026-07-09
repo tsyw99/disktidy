@@ -202,6 +202,7 @@ impl rig_core::tool::Tool for ReadExcelTool {
             row_counts: result.row_counts.clone(),
             columns: result.columns.clone(),
             rows: result.all_rows,
+            report: None,
         });
 
         debug!(

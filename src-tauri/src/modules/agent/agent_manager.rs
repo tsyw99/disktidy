@@ -25,12 +25,15 @@ use crate::modules::agent::tools::{
 };
 use crate::modules::agent::tools::file_write_tool::FileWriteTool;
 
-/// 最大重试次数
 const MAX_RETRIES: u32 = 2;
-/// 初始重试延迟（毫秒）
 const RETRY_DELAY_MS: u64 = 1000;
-/// 最大连续失败次数
 const MAX_CONSECUTIVE_FAILURES: u32 = 3;
+/// 单次 LLM API 调用超时（秒）
+const LLM_REQUEST_TIMEOUT_SECS: u64 = 120;
+/// 整个流式对话操作的总超时（秒）
+const STREAM_TOTAL_TIMEOUT_SECS: u64 = 300;
+/// 多轮对话最大轮次（Excel 工作流需要 read_excel → analyze_data → resolve_path → generate_html = 4 轮工具调用 + 1 轮最终回复）
+const MULTI_TURN_MAX: usize = 7;
 
 /// is_executing 标志的 RAII 守卫
 /// 确保即使发生 panic 或 future 被 cancel，标志也会被重置
@@ -169,14 +172,18 @@ impl AgentManager {
         });
         let _ = self.app.emit("agent-stream-event", &start_payload);
 
-        let result = self.execute_with_retry(|| {
-            self.execute_chat_stream(user_input, &message_id)
-        }).await;
+        let result = tokio::time::timeout(
+            Duration::from_secs(STREAM_TOTAL_TIMEOUT_SECS),
+            self.execute_with_retry(|| {
+                self.execute_chat_stream(user_input, &message_id)
+            }),
+        )
+        .await;
 
         // _guard 在此作用域结束时 Drop，自动重置 is_executing = false
 
         match result {
-            Ok(response) => {
+            Ok(Ok(response)) => {
                 self.consecutive_failures.store(0, Ordering::SeqCst);
                 let mut ctx = self.context.write().await;
                 ctx.add_user_message(user_input.to_string());
@@ -184,7 +191,25 @@ impl AgentManager {
                 info!("流式对话完成，响应长度: {} 字符", response.len());
                 Ok(response)
             }
-            Err(e) => {
+            Err(_elapsed) => {
+                // tokio::time::timeout 超时
+                let e = AgentError::Timeout("整个对话操作超时".to_string());
+                error!("流式对话失败: {}", e);
+                let error_payload = serde_json::json!({
+                    "type": "error",
+                    "message_id": message_id,
+                    "error": e.to_string(),
+                    "error_code": e.error_code(),
+                });
+                let _ = self.app.emit("agent-stream-event", &error_payload);
+                let failures = self.consecutive_failures.fetch_add(1, Ordering::SeqCst) + 1;
+                if failures >= MAX_CONSECUTIVE_FAILURES {
+                    error!("连续失败 {} 次，停止执行", failures);
+                    return Err(AgentError::ConsecutiveFailuresCount(failures as usize));
+                }
+                Err(e)
+            }
+            Ok(Err(e)) => {
                 error!("流式对话失败: {}", e);
                 let error_payload = serde_json::json!({
                     "type": "error",
@@ -295,14 +320,20 @@ impl AgentManager {
         let context = self.context.read().await;
         let history = context.get_messages();
         let history_len = history.len();
+        let context_tokens = context.estimated_tokens();
         drop(context);
-        debug!("加载对话历史: {} 条消息", history_len);
+        debug!("加载对话历史: {} 条消息, 预估 {} tokens", history_len, context_tokens);
+        if context_tokens > 40_000 {
+            warn!("上下文 token 数较高 ({}), 接近上限 50000，建议清空对话历史", context_tokens);
+        }
 
-        let response: String = agent
-            .prompt(user_input)
-            .with_history(history)
-            .await
-            .map_err(|e| classify_llm_error(e))?;
+        let response: String = tokio::time::timeout(
+            Duration::from_secs(LLM_REQUEST_TIMEOUT_SECS),
+            agent.prompt(user_input).with_history(history),
+        )
+        .await
+        .map_err(|_| AgentError::Timeout("LLM API 调用超时".to_string()))?
+        .map_err(|e| classify_llm_error(e))?;
 
         Ok(response)
     }
@@ -345,16 +376,24 @@ impl AgentManager {
         let context = self.context.read().await;
         let history = context.get_messages();
         let history_len = history.len();
+        let context_tokens = context.estimated_tokens();
         drop(context);
-        debug!("加载对话历史: {} 条消息", history_len);
+        debug!("加载对话历史: {} 条消息, 预估 {} tokens", history_len, context_tokens);
+        if context_tokens > 40_000 {
+            warn!("上下文 token 数较高 ({}), 接近上限 50000，建议清空对话历史", context_tokens);
+        }
 
         let prompt_msg = Message::user(user_input);
 
-        let stream = agent
-            .stream_prompt(prompt_msg)
-            .multi_turn(5)
-            .with_history(history)
-            .await;
+        let stream = tokio::time::timeout(
+            Duration::from_secs(LLM_REQUEST_TIMEOUT_SECS),
+            agent
+                .stream_prompt(prompt_msg)
+                .multi_turn(MULTI_TURN_MAX)
+                .with_history(history),
+        )
+        .await
+        .map_err(|_| AgentError::Timeout("LLM 流式 API 调用超时".to_string()))?;
 
         let full_response = bridge_stream_to_tauri(stream, &self.app, message_id)
             .await

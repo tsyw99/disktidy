@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use crate::modules::agent::tools::tool_error::ToolError;
 use super::ToolPrompt;
 use super::excel_cache;
+use super::excel_cache::cache_set_report;
 
 #[derive(Debug, Deserialize)]
 pub struct AnalyzeDataInput {
@@ -15,22 +16,26 @@ pub struct AnalyzeDataInput {
 
 #[derive(Debug, Serialize)]
 pub struct AnalyzeDataOutput {
-    /// 报告 JSON（传给 generate_html）
-    pub report: ReportData,
-    /// 文字摘要
+    /// 分析报告（不再传给 LLM，仅用于命令行展示；大 JSON 已存入缓存）
+    #[serde(skip)]
+    pub report: Option<ReportData>,
+    /// 汇总摘要（给 LLM 看的）
     pub summary: String,
-    /// 专属提示词
+    pub dimension_count: usize,
+    pub total_rows: usize,
     pub _prompt: String,
 }
 
 impl ToolPrompt for AnalyzeDataTool {
     fn detailed_prompt(&self) -> &'static str {
         r#"## 数据分析完成
-下一步调用 `generate_html` 生成可视化报告：
-- `report`: 将工具返回的 report 字段完整传入
-- `output_path`: 报告保存路径，格式 {下载目录}/{YYYYMMDD}_{描述}_分析报告.html
+分析报告已生成并缓存。共处理 {total_rows} 条记录，覆盖 {dimension_count} 个维度。
 
-先调用 `resolve_path("下载")` 获取下载目录，再调用 `generate_html`。
+下一步调用 `generate_html` 生成可视化报告：
+- `report_key`: 传入目录路径（与 read_excel 的 directory 相同），工具会从缓存读取报告数据
+- `output_path`: 传入下载目录路径，加上 "数据分析报告.html" 作为文件名
+
+重要：不要尝试在函数调用中传递完整的 JSON 数据，只需传递 `report_key` (字符串) 即可。
 "#
     }
 }
@@ -196,9 +201,15 @@ impl rig_core::tool::Tool for AnalyzeDataTool {
 
         let summary = summary_parts.join("；");
 
+        // 将完整的 report 存入缓存，避免通过 LLM 传递大 JSON
+        cache_set_report(&args.directory, report.clone());
+        let dimension_count = args.dimensions.len();
+
         Ok(AnalyzeDataOutput {
-            report,
+            report: Some(report),
             summary,
+            dimension_count,
+            total_rows: total,
             _prompt: self.detailed_prompt().to_string(),
         })
     }

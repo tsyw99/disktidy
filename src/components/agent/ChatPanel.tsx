@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Trash2, Loader2, Wrench, CheckCircle2, RotateCcw, AlertTriangle, Settings, ChevronDown, ChevronRight } from 'lucide-react';
+import { Send, Trash2, Loader2, Wrench, CheckCircle2, RotateCcw, AlertTriangle, Settings, ChevronDown, ChevronRight, StopCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAgentStore } from '../../stores/agentStore';
+import { agentService } from '../../services/agentService';
 import MarkdownRenderer from './MarkdownRenderer';
 import HtmlReportCard from './HtmlReportCard';
 import type { AgentMessage, ToolCallRecord } from '../../types/agent';
@@ -134,6 +135,27 @@ export default function ChatPanel({ onOpenSettings }: ChatPanelProps) {
     await sendStreamMessage(trimmed);
   };
 
+  /** 强制停止：重置前端状态 + 后端 is_executing 标志 */
+  const handleForceStop = async () => {
+    // 通过 store 内部方法清除看门狗和重置状态
+    useAgentStore.getState()._clearWatchdog();
+    useAgentStore.setState({
+      isLoading: false,
+      isStreaming: false,
+      streamingContent: '',
+      streamingToolName: null,
+      streamingToolResult: null,
+      streamingToolResultType: null,
+      streamingToolCalls: [],
+      error: '已手动停止 AI 响应。',
+      errorCode: null,
+    });
+    // 异步重置后端
+    try {
+      await agentService.resetExecuting();
+    } catch { /* 忽略 */ }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -237,7 +259,7 @@ export default function ChatPanel({ onOpenSettings }: ChatPanelProps) {
           <div className="flex justify-start">
             <div className="bg-gray-100 dark:bg-gray-700 rounded-2xl rounded-bl-md px-4 py-2.5 max-w-[85%]">
               <MarkdownRenderer content={streamingContent} />
-              <span className="inline-block w-1.5 h-4 bg-blue-500 ml-0.5 animate-pulse align-text-bottom" />
+              <span className="dot-typing"><span /><span /><span /></span>
             </div>
           </div>
         )}
@@ -311,10 +333,19 @@ export default function ChatPanel({ onOpenSettings }: ChatPanelProps) {
             className="flex-1 resize-none rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent disabled:opacity-50"
             style={{ maxHeight: 160 }}
           />
+          {isLoading && (
+            <button
+              onClick={handleForceStop}
+              className="p-2.5 rounded-xl bg-red-500 text-white hover:bg-red-600 transition-colors flex-shrink-0"
+              title="强制停止 AI 响应"
+            >
+              <StopCircle className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={handleSend}
             disabled={!input.trim() || isLoading}
-            className="p-2.5 rounded-xl bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="p-2.5 rounded-xl bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
           >
             {isLoading ? (
               <Loader2 className="w-4 h-4 animate-spin" />

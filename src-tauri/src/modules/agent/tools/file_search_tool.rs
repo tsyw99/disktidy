@@ -74,9 +74,8 @@ impl ToolPrompt for FileSearchTool {
 3. 列出代表性文件（最多 10 个）
 4. 根据文件类型建议后续操作：
    - Excel表格(.xlsx/.xls) → 使用三步骤工作流：read_excel → analyze_data → generate_html
-   - 其他文档类(TXT/DOCX/PDF/MD) → 调用 file_content_analyzer 分析内容
    - 大文件 → 调用 large_file_scanner 深度分析
-   - 杂乱文件 → 调用 file_organizer 整理
+   - 杂乱文件 → 调用 organiz_files 整理
 "#
     }
 }

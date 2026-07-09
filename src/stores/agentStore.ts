@@ -152,8 +152,14 @@ interface AgentStore {
   addMessage: (message: AgentMessage) => void;
   handleStreamEvent: (event: StreamEvent) => void;
   _unlisten: UnlistenFn | null;
+  _streamWatchdog: ReturnType<typeof setTimeout> | null;
   _setupListener: () => Promise<void>;
+  _startWatchdog: () => void;
+  _clearWatchdog: () => void;
 }
+
+/** 前端安全超时：如果超过此时间仍未收到 done/error 事件，强制重置状态 */
+const STREAM_WATCHDOG_MS = 5 * 60 * 1000; // 5 分钟
 
 const generateId = () => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
@@ -171,6 +177,60 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   streamingToolCalls: [],
   lastFailedMessage: null,
   _unlisten: null,
+  _streamWatchdog: null,
+
+  /** 启动前端安全看门狗：超时后强制恢复 UI */
+  _startWatchdog: () => {
+    const { _clearWatchdog } = get();
+    _clearWatchdog(); // 先清除旧的
+    const watchdog = setTimeout(async () => {
+      const { isStreaming, streamingContent } = get();
+      if (!isStreaming) return; // 已经正常结束
+
+      console.warn('[agentStore] 流式看门狗触发，强制重置状态');
+
+      // 尝试重置后端卡死标志
+      try {
+        await agentService.resetExecuting();
+      } catch { /* 忽略 */ }
+
+      // 保存已接收的部分内容作为错误消息
+      if (streamingContent) {
+        const partialMsg: AgentMessage = {
+          id: generateId(),
+          role: 'assistant',
+          content: streamingContent + '\n\n---\n⚠️ **响应超时**：AI 响应时间过长，已自动中断。请重试。',
+          timestamp: Date.now(),
+          error: true,
+        };
+        set((state) => ({
+          messages: [...state.messages, partialMsg],
+        }));
+      }
+
+      set({
+        isLoading: false,
+        isStreaming: false,
+        streamingContent: '',
+        streamingToolName: null,
+        streamingToolResult: null,
+        streamingToolResultType: null,
+        streamingToolCalls: [],
+        error: '响应超时，已自动中断。请重试或检查网络连接。',
+        errorCode: 'TIMEOUT',
+      });
+    }, STREAM_WATCHDOG_MS);
+    set({ _streamWatchdog: watchdog });
+  },
+
+  /** 清除前端安全看门狗 */
+  _clearWatchdog: () => {
+    const { _streamWatchdog } = get();
+    if (_streamWatchdog !== null) {
+      clearTimeout(_streamWatchdog);
+      set({ _streamWatchdog: null });
+    }
+  },
 
   _setupListener: async () => {
     const { _unlisten } = get();
@@ -267,9 +327,14 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       lastFailedMessage: null,
     }));
 
+    // 启动前端安全看门狗
+    get()._startWatchdog();
+
     try {
       await agentService.chatStream(content);
     } catch (e) {
+      // 清除看门狗
+      get()._clearWatchdog();
       // 仅在流式事件处理器尚未处理错误时才设置错误状态
       // 流式事件的 error 类型已在 handleStreamEvent 中处理
       // 如果 handleStreamEvent 已处理（此时 isStreaming 已被设为 false），则不覆盖
@@ -365,6 +430,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         break;
 
       case 'done':
+        get()._clearWatchdog();
         if (isStreaming) {
           const finalContent = event.content || get().streamingContent;
           const toolCalls = [...get().streamingToolCalls];
@@ -375,10 +441,18 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
           const generateHtmlCall = toolCalls.find(tc => tc.toolName === 'generate_html');
           const reportFilePath = generateHtmlCall ? extractFilePathFromResult(generateHtmlCall.toolResult) ?? undefined : undefined;
 
+          // 检测 AI 是否谎称生成了报告：检查文本中是否包含"报告已保存"/"已生成报告"等关键词，
+          // 但 generate_html 工具并未被调用
+          const claimsReportGenerated = /报告已(保存|生成|导出|创建)|已(保存|生成|导出|创建).*报告|saved_path|报告.*\.(html|HTML)/i.test(finalContent);
+          const noReportToolCalled = !generateHtmlCall && !htmlCall;
+          const warningSuffix = (claimsReportGenerated && noReportToolCalled)
+            ? '\n\n---\n⚠️ **注意**：AI 在回复中提到了报告保存，但实际并未执行报告生成操作。请重试或检查是否有错误发生。'
+            : '';
+
           const assistantMsg: AgentMessage = {
             id: generateId(),
             role: 'assistant',
-            content: finalContent,
+            content: finalContent + warningSuffix,
             timestamp: Date.now(),
             toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
             htmlReport,
@@ -400,6 +474,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         break;
 
       case 'error': {
+        get()._clearWatchdog();
         const errorCode = event.error_code || 'UNKNOWN';
         const errorMsg = event.error || '未知错误';
         const friendlyMsg = ERROR_CODE_MESSAGES[errorCode]
@@ -442,6 +517,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
 
   clearContext: async () => {
     try {
+      get()._clearWatchdog();
       await agentService.clearContext();
       set({
         messages: [],

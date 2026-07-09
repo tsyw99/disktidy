@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, Sun, Moon, Monitor, HardDrive, Trash2, Shield, Bell, FolderX, FileCheck, AlertTriangle, Construction, Info, Github, User, X, FolderOpen, Bot, Eye, EyeOff, Wifi, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Settings, Sun, Moon, Monitor, HardDrive, Trash2, Shield, FolderX, FileCheck, AlertTriangle, Construction, Info, Github, User, X, FolderOpen, Bot, Eye, EyeOff, Wifi, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useUIStore, useSettingsStore, useSettingsActions, useAgentStore } from '../stores';
 import { Modal } from '../components/common';

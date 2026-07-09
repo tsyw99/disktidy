@@ -4,11 +4,16 @@ use std::path::Path;
 use crate::modules::agent::tools::tool_error::ToolError;
 use super::ToolPrompt;
 use super::analyze_data_tool::ReportData;
+use super::excel_cache::{cache_get_report, cache_clear};
 
 #[derive(Debug, Deserialize)]
 pub struct GenerateHtmlInput {
-    /// analyze_data 返回的 report 字段（JSON 对象）
-    pub report: serde_json::Value,
+    /// analyze_data 返回的 report 字段（JSON 对象，兼容旧方式）
+    #[serde(default)]
+    pub report: Option<serde_json::Value>,
+    /// 缓存键（与 read_excel/analyze_data 的 directory 相同，推荐使用此方式）
+    #[serde(default)]
+    pub report_key: Option<String>,
     /// HTML 保存路径（绝对路径，含文件名）
     pub output_path: String,
 }
@@ -25,7 +30,10 @@ pub struct GenerateHtmlOutput {
 
 impl ToolPrompt for GenerateHtmlTool {
     fn detailed_prompt(&self) -> &'static str {
-        "" // generate_html 是最后一步，不再需要后续提示词
+        "报告已生成完毕并向用户展示保存路径。\n\n\
+         请在回复中主动建议用户开启新对话（点击「清空对话」按钮），\
+         并简要说明原因：当前对话中累积了大量文件分析数据，\
+         会占用较多上下文，开启新对话可以让后续交互更快速稳定。"
     }
 }
 
@@ -44,47 +52,78 @@ impl rig_core::tool::Tool for GenerateHtmlTool {
     async fn definition(&self, _prompt: String) -> rig_core::completion::ToolDefinition {
         rig_core::completion::ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "将 analyze_data 返回的分析结果渲染为包含 ECharts 图表的自包含 HTML 报告文件。传入 report JSON 和 output_path。".to_string(),
+            description: "将分析结果渲染为包含 ECharts 图表的自包含 HTML 报告文件。推荐传入 report_key（目录路径）从缓存读取报告数据，避免传递大 JSON。".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
+                    "report_key": {
+                        "type": "string",
+                        "description": "目录路径（与 read_excel 的 directory 相同），工具会从缓存读取报告数据。这是推荐方式。"
+                    },
                     "report": {
                         "type": "object",
-                        "description": "analyze_data 工具返回的 report 字段，直接原样传入"
+                        "description": "analyze_data 返回的 report JSON（仅在无法用 report_key 时使用）"
                     },
                     "output_path": {
                         "type": "string",
                         "description": "HTML 报告保存的绝对路径，含 .html 文件名"
                     }
                 },
-                "required": ["report", "output_path"]
+                "required": ["output_path"]
             }),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let report: ReportData = serde_json::from_value(args.report)
-            .map_err(|e| ToolError::ExecutionError(format!("report JSON 解析失败: {}", e)))?;
+        // 优先从缓存读取报告（推荐方式），否则从 JSON 参数解析（兼容旧方式）
+        let report: ReportData = if let Some(ref key) = args.report_key {
+            cache_get_report(key)
+                .ok_or_else(|| ToolError::ExecutionError(
+                    format!("缓存中未找到报告数据，请确保已先执行 analyze_data (key={})", key)
+                ))?
+        } else if let Some(ref json_value) = args.report {
+            serde_json::from_value(json_value.clone())
+                .map_err(|e| ToolError::ExecutionError(format!("report JSON 解析失败: {}", e)))?
+        } else {
+            return Err(ToolError::ExecutionError(
+                "请提供 report_key（推荐）或 report JSON 参数".to_string()
+            ));
+        };
 
-        let html = build_html(&report);
+        let output_path = args.output_path.clone();
+        let title = report.title.clone();
 
-        let path = Path::new(&args.output_path);
-        if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| ToolError::ExecutionError(format!("创建目录失败: {}", e)))?;
+        // 在独立线程中执行同步操作（HTML 生成 + 文件写入），避免阻塞 tokio 运行时
+        let saved_path = tokio::task::spawn_blocking(move || -> Result<String, ToolError> {
+            let html = build_html(&report);
+
+            let path = Path::new(&output_path);
+            if let Some(parent) = path.parent() {
+                if !parent.exists() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| ToolError::ExecutionError(format!("创建目录失败: {}", e)))?;
+                }
             }
+
+            std::fs::write(path, &html)
+                .map_err(|e| ToolError::ExecutionError(format!("保存报告失败: {}", e)))?;
+
+            let canonical = std::fs::canonicalize(path)
+                .unwrap_or_else(|_| path.to_path_buf());
+
+            Ok(canonical.to_string_lossy().to_string())
+        })
+        .await
+        .map_err(|e| ToolError::ExecutionError(format!("HTML 生成线程异常: {}", e)))??;
+
+        // 报告生成成功后，清除 Excel 缓存以释放内存
+        if let Some(ref key) = args.report_key {
+            cache_clear(key);
         }
 
-        std::fs::write(path, &html)
-            .map_err(|e| ToolError::ExecutionError(format!("保存报告失败: {}", e)))?;
-
-        let canonical = std::fs::canonicalize(path)
-            .unwrap_or_else(|_| path.to_path_buf());
-
         Ok(GenerateHtmlOutput {
-            title: report.title.clone(),
-            saved_path: canonical.to_string_lossy().to_string(),
+            title,
+            saved_path,
             _prompt: String::new(),
         })
     }

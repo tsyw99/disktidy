@@ -287,6 +287,17 @@ body {
   }
 }
 
+@keyframes dotTyping {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  30% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+}
+
 @keyframes shimmer {
   0% {
     background-position: -200% 0;
@@ -335,6 +346,29 @@ body {
 
 .animate-pulse-soft {
   animation: pulseSoft 2s ease-in-out infinite;
+}
+
+/* Dot typing animation (AI 输出光标) */
+.dot-typing {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  margin-left: 4px;
+  vertical-align: text-bottom;
+}
+.dot-typing span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--color-primary);
+  display: inline-block;
+  animation: dotTyping 1.4s ease-in-out infinite both;
+}
+.dot-typing span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.dot-typing span:nth-child(3) {
+  animation-delay: 0.4s;
 }
 
 .animate-shimmer {
